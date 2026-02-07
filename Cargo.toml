@@ -9,4 +9,8 @@ name = "oxpg"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.27.0"
+anyhow = "1.0.101"
+pyo3 = "0.28"
+pyo3-async-runtimes = { version = "0.28.0", features = ["tokio-runtime"] }
+tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros"] }
+tokio-postgres = "0.7.16"
