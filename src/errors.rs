@@ -11,6 +11,9 @@ pub enum OxpgError {
     #[error("Connection failed: {0}")]
     ConnectionFailed(String),
 
+    #[error("Query failed: {0}")]
+    QueryFailed(String),
+
     #[error("Unexpected error: {0}")]
     Unexpected(String),
 }
@@ -32,6 +35,9 @@ impl From<OxpgError> for PyErr {
             }
             OxpgError::Unexpected(msg) => PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
                 format!("Unexpected error: {}", msg),
+            ),
+            OxpgError::QueryFailed(reason) => PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                format!("Query failed: {}", reason),
             ),
         }
     }
