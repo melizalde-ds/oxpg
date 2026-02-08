@@ -1,5 +1,5 @@
 use crate::errors::OxpgError;
-use pyo3::{PyErr, PyResult, exceptions::PyValueError, pyclass, pyfunction, pymethods};
+use pyo3::{PyErr, PyResult, pyclass, pyfunction, pymethods};
 use pyo3_stub_gen::derive::*;
 use tokio_postgres::Client as PgClient;
 
@@ -139,4 +139,72 @@ fn extract_host_from_dsn(dsn: String) -> PyResult<(String, String, u16, String, 
     };
 
     Ok((host, user.to_string(), port, db.to_string(), dsn))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_host_from_dsn_valid_with_port() {
+        let dsn = "postgresql://user:pass@localhost:5432/mydb".to_string();
+        let result = extract_host_from_dsn(dsn);
+        assert!(result.is_ok());
+        let (host, user, port, db, _) = result.unwrap();
+        assert_eq!(host, "localhost");
+        assert_eq!(user, "user");
+        assert_eq!(port, 5432);
+        assert_eq!(db, "mydb");
+    }
+
+    #[test]
+    fn test_extract_host_from_dsn_default_port() {
+        let dsn = "postgresql://user:pass@localhost/mydb".to_string();
+        let result = extract_host_from_dsn(dsn);
+        assert!(result.is_ok());
+        let (_, _, port, _, _) = result.unwrap();
+        assert_eq!(port, 5432); // Should default to 5432
+    }
+
+    #[test]
+    fn test_extract_host_from_dsn_postgres_scheme() {
+        let dsn = "postgres://user:pass@localhost/mydb".to_string();
+        let result = extract_host_from_dsn(dsn);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extract_host_from_dsn_invalid_scheme() {
+        let dsn = "mysql://user:pass@localhost/db".to_string();
+        let result = extract_host_from_dsn(dsn);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_host_from_dsn_missing_at_symbol() {
+        let dsn = "postgresql://localhost/db".to_string();
+        let result = extract_host_from_dsn(dsn);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_host_from_dsn_missing_password() {
+        let dsn = "postgresql://user@localhost/db".to_string();
+        let result = extract_host_from_dsn(dsn);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_host_from_dsn_missing_database() {
+        let dsn = "postgresql://user:pass@localhost".to_string();
+        let result = extract_host_from_dsn(dsn);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_host_from_dsn_invalid_port() {
+        let dsn = "postgresql://user:pass@localhost:abc/db".to_string();
+        let result = extract_host_from_dsn(dsn);
+        assert!(result.is_err());
+    }
 }
