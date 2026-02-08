@@ -1,3 +1,4 @@
+use crate::errors::OxpgError;
 use pyo3::{PyErr, PyResult, exceptions::PyValueError, pyclass, pyfunction, pymethods};
 use pyo3_stub_gen::derive::*;
 use tokio_postgres::Client as PgClient;
@@ -35,13 +36,20 @@ pub fn connect(
     port: u16,
     db: String,
 ) -> PyResult<Client> {
+    if dsn.is_some() && (host.is_some() || user.is_some() || password.is_some()) {
+        return Err(OxpgError::InvalidParameter(
+            "Cannot specify both DSN and individual connection parameters".to_string(),
+        )
+        .into());
+    }
+
     let (host, user, port, db, connection_string) = match dsn {
         Some(s) => extract_host_from_dsn(s)?,
         None => {
-            let host = host.ok_or_else(|| PyErr::new::<PyValueError, _>("host is required"))?;
-            let user = user.ok_or_else(|| PyErr::new::<PyValueError, _>("user is required"))?;
+            let host = host.ok_or_else(|| OxpgError::MissingParameter("host".to_string()))?;
+            let user = user.ok_or_else(|| OxpgError::MissingParameter("user".to_string()))?;
             let password =
-                password.ok_or_else(|| PyErr::new::<PyValueError, _>("password is required"))?;
+                password.ok_or_else(|| OxpgError::MissingParameter("password".to_string()))?;
 
             (
                 host.clone(),
@@ -57,10 +65,10 @@ pub fn connect(
     };
 
     let runtime = tokio::runtime::Runtime::new().map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-            "Failed to create Tokio runtime: {}",
+        PyErr::from(OxpgError::ConnectionFailed(format!(
+            "Failed to connect to Tokio runtime: {}",
             e
-        ))
+        )))
     })?;
 
     let (client, connection) = runtime
@@ -68,10 +76,10 @@ pub fn connect(
             tokio_postgres::connect(&connection_string, tokio_postgres::NoTls).await
         })
         .map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyConnectionError, _>(format!(
-                "Failed to connect to database: {}",
+            PyErr::from(OxpgError::ConnectionFailed(format!(
+                "Failed to connect to PostgreSQL: {}",
                 e
-            ))
+            )))
         })?;
 
     runtime.spawn(async move {
@@ -95,28 +103,36 @@ fn extract_host_from_dsn(dsn: String) -> PyResult<(String, String, u16, String, 
         .strip_prefix("postgres://")
         .or_else(|| dsn.strip_prefix("postgresql://"))
         .ok_or_else(|| {
-            PyErr::new::<PyValueError, _>(
-                "Invalid DSN: must start with postgres:// or postgresql://",
-            )
+            PyErr::from(OxpgError::InvalidParameter(
+                "Invalid DSN: must start with postgres:// or postgresql://".to_string(),
+            ))
         })?;
 
     let (auth, rest) = without_scheme.split_once('@').ok_or_else(|| {
-        PyErr::new::<PyValueError, _>("Invalid DSN: missing @ separating auth and host")
+        PyErr::from(OxpgError::InvalidParameter(
+            "Invalid DSN: missing @ separating auth and host".to_string(),
+        ))
     })?;
 
-    let (user, _) = auth
-        .split_once(':')
-        .ok_or_else(|| PyErr::new::<PyValueError, _>("Invalid DSN: auth must be user:password"))?;
+    let (user, _) = auth.split_once(':').ok_or_else(|| {
+        PyErr::from(OxpgError::InvalidParameter(
+            "Invalid DSN: auth must be user:password".to_string(),
+        ))
+    })?;
 
     let (host_port, db) = rest.split_once('/').ok_or_else(|| {
-        PyErr::new::<PyValueError, _>("Invalid DSN: missing database name after /")
+        PyErr::from(OxpgError::InvalidParameter(
+            "Invalid DSN: missing database name after /".to_string(),
+        ))
     })?;
 
     let (host, port) = match host_port.split_once(':') {
         Some((h, p)) => {
-            let port = p
-                .parse::<u16>()
-                .map_err(|_| PyErr::new::<PyValueError, _>("Invalid DSN: port must be a number"))?;
+            let port = p.parse::<u16>().map_err(|_| {
+                PyErr::from(OxpgError::InvalidParameter(
+                    "Invalid DSN: port must be a number".to_string(),
+                ))
+            })?;
             (h.to_string(), port)
         }
         None => (host_port.to_string(), 5432),
