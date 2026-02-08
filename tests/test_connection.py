@@ -135,7 +135,7 @@ class TestConnectionFailure:
 
     def test_connect_to_invalid_host(self):
         """Should raise ConnectionError for invalid host"""
-        with pytest.raises(Exception, match="Failed to connect to PostgreSQL"):
+        with pytest.raises(ConnectionError, match="Failed to connect to PostgreSQL"):
             oxpg.connect(
                 host="nonexistent.host.local",
                 user="postgres",
@@ -144,7 +144,7 @@ class TestConnectionFailure:
 
     def test_connect_with_wrong_credentials(self):
         """Should raise ConnectionError for wrong credentials"""
-        with pytest.raises(Exception, match="Failed to connect to PostgreSQL"):
+        with pytest.raises(ConnectionError, match="Failed to connect to PostgreSQL"):
             oxpg.connect(
                 host="localhost",
                 user="wronguser",
