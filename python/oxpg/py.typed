@@ -1,0 +1,2 @@
+[tool.maturin]
+python-source = "python"
