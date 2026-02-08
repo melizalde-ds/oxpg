@@ -1,0 +1,7 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: test
+    ports:
+      - "5432:5432"
