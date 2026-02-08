@@ -1,6 +1,8 @@
 use pyo3::{PyErr, PyResult, exceptions::PyValueError, pyclass, pyfunction, pymethods};
+use pyo3_stub_gen::derive::*;
 use tokio_postgres::Client as PgClient;
 
+#[gen_stub_pyclass]
 #[pyclass]
 pub struct Client {
     host: String,
@@ -11,6 +13,7 @@ pub struct Client {
     runtime: tokio::runtime::Runtime,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl Client {
     fn __repr__(&self) -> String {
@@ -21,6 +24,7 @@ impl Client {
     }
 }
 
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (dsn=None, host=None, user=None, password=None, port=5432, db="postgres".to_string()))]
 pub fn connect(

@@ -17,10 +17,7 @@ classifiers = [
 
 
 [dependency-groups]
-dev = [
-    "maturin>=1.11.5",
-    "pytest>=9.0.2",
-]
+dev = ["maturin>=1.11.5", "pytest>=9.0.2"]
 
 [tool.maturin]
 python-source = "python"
