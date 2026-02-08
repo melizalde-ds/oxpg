@@ -6,7 +6,6 @@ import typing
 __all__ = [
     "Client",
     "connect",
-    "sum_as_string",
 ]
 
 @typing.final
@@ -14,6 +13,4 @@ class Client:
     def __repr__(self) -> builtins.str: ...
 
 def connect(dsn: typing.Optional[builtins.str] = None, host: typing.Optional[builtins.str] = None, user: typing.Optional[builtins.str] = None, password: typing.Optional[builtins.str] = None, port: builtins.int = 5432, db: builtins.str = 'postgres') -> Client: ...
-
-def sum_as_string(a: builtins.int, b: builtins.int) -> builtins.str: ...
 
