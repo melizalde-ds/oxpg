@@ -1,6 +1,5 @@
-use std::result;
-
 use crate::errors::OxpgError;
+use chrono::{DateTime, NaiveDate, Utc};
 use pyo3::types::{PyDict, PyDictMethods, PyList, PyListMethods};
 use pyo3::{Bound, IntoPyObject, PyErr, PyResult, Python, pyclass, pyfunction, pymethods};
 use pyo3_stub_gen::derive::*;
@@ -39,14 +38,40 @@ impl Client {
             for (idx, column) in row.columns().iter().enumerate() {
                 let value = match *column.type_() {
                     Type::BOOL => row.get::<_, Option<bool>>(idx).into_pyobject(py)?,
+                    Type::BYTEA => row.get::<_, Option<Vec<u8>>>(idx).into_pyobject(py)?,
+                    Type::DATE => row
+                        .get::<_, Option<NaiveDate>>(idx)
+                        .map(|d| d.to_string())
+                        .into_pyobject(py)?,
                     Type::INT2 => row.get::<_, Option<i16>>(idx).into_pyobject(py)?,
                     Type::INT4 => row.get::<_, Option<i32>>(idx).into_pyobject(py)?,
                     Type::INT8 => row.get::<_, Option<i64>>(idx).into_pyobject(py)?,
+                    Type::JSON | Type::JSONB => row
+                        .get::<_, Option<serde_json::Value>>(idx)
+                        .map(|v| v.to_string())
+                        .into_pyobject(py)?,
+                    Type::NUMERIC => row.get::<_, Option<String>>(idx).into_pyobject(py)?,
                     Type::FLOAT4 => row.get::<_, Option<f32>>(idx).into_pyobject(py)?,
                     Type::FLOAT8 => row.get::<_, Option<f64>>(idx).into_pyobject(py)?,
                     Type::TEXT | Type::VARCHAR | Type::BPCHAR => {
                         row.get::<_, Option<String>>(idx).into_pyobject(py)?
                     }
+                    Type::TIME => row
+                        .get::<_, Option<chrono::NaiveTime>>(idx)
+                        .map(|t| t.to_string())
+                        .into_pyobject(py)?,
+                    Type::TIMESTAMP => row
+                        .get::<_, Option<chrono::NaiveDateTime>>(idx)
+                        .map(|dt| dt.to_string())
+                        .into_pyobject(py)?,
+                    Type::TIMESTAMPTZ => row
+                        .get::<_, Option<DateTime<Utc>>>(idx)
+                        .map(|dt| dt.to_string())
+                        .into_pyobject(py)?,
+                    Type::UUID => row
+                        .get::<_, Option<uuid::Uuid>>(idx)
+                        .map(|u| u.to_string())
+                        .into_pyobject(py)?,
                     _ => py.None().into_pyobject(py)?,
                 };
 
