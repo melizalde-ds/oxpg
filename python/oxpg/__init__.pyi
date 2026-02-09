@@ -5,18 +5,13 @@ import builtins
 import typing
 __all__ = [
     "Client",
-    "Row",
     "connect",
 ]
 
 @typing.final
 class Client:
-    def query(self, query: builtins.str) -> None: ...
+    def query(self, query: builtins.str) -> list: ...
     def __repr__(self) -> builtins.str: ...
-
-@typing.final
-class Row:
-    ...
 
 def connect(dsn: typing.Optional[builtins.str] = None, host: typing.Optional[builtins.str] = None, user: typing.Optional[builtins.str] = None, password: typing.Optional[builtins.str] = None, port: builtins.int = 5432, db: builtins.str = 'postgres') -> Client: ...
 

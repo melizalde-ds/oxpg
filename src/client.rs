@@ -1,6 +1,10 @@
+use std::result;
+
 use crate::errors::OxpgError;
-use pyo3::{PyErr, PyResult, pyclass, pyfunction, pymethods};
+use pyo3::types::{PyDict, PyDictMethods, PyList, PyListMethods};
+use pyo3::{Bound, IntoPyObject, PyErr, PyResult, Python, pyclass, pyfunction, pymethods};
 use pyo3_stub_gen::derive::*;
+use tokio_postgres::types::Type;
 use tokio_postgres::{Client as PgClient, Config};
 
 #[gen_stub_pyclass]
@@ -15,15 +19,10 @@ pub struct Client {
     runtime: tokio::runtime::Runtime,
 }
 
-#[gen_stub_pyclass]
-#[pyclass]
-#[derive(Debug)]
-pub struct Row {}
-
 #[gen_stub_pymethods]
 #[pymethods]
 impl Client {
-    fn query(&self, query: String) -> PyResult<()> {
+    fn query<'a>(&'a self, py: Python<'a>, query: String) -> PyResult<Bound<'a, PyList>> {
         let rows = self
             .runtime
             .block_on(async { self.client.query(&query, &[]).await })
@@ -33,8 +32,29 @@ impl Client {
                     e
                 )))
             })?;
-        println!("Query returned: {:?}", rows);
-        Ok(())
+
+        let result = PyList::empty(py);
+        for row in rows {
+            let row_dict = PyDict::new(py);
+            for (idx, column) in row.columns().iter().enumerate() {
+                let value = match *column.type_() {
+                    Type::BOOL => row.get::<_, Option<bool>>(idx).into_pyobject(py)?,
+                    Type::INT2 => row.get::<_, Option<i16>>(idx).into_pyobject(py)?,
+                    Type::INT4 => row.get::<_, Option<i32>>(idx).into_pyobject(py)?,
+                    Type::INT8 => row.get::<_, Option<i64>>(idx).into_pyobject(py)?,
+                    Type::FLOAT4 => row.get::<_, Option<f32>>(idx).into_pyobject(py)?,
+                    Type::FLOAT8 => row.get::<_, Option<f64>>(idx).into_pyobject(py)?,
+                    Type::TEXT | Type::VARCHAR | Type::BPCHAR => {
+                        row.get::<_, Option<String>>(idx).into_pyobject(py)?
+                    }
+                    _ => py.None().into_pyobject(py)?,
+                };
+
+                row_dict.set_item(column.name(), value)?;
+            }
+            result.append(row_dict)?;
+        }
+        Ok(result)
     }
 
     fn __repr__(&self) -> String {
