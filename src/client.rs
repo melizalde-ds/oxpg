@@ -113,16 +113,17 @@ impl Client {
                                 e
                             )))
                         })?,
-                    Type::NUMERIC => row
-                        .get::<_, Option<String>>(idx)
-                        .into_pyobject(py)
-                        .map_err(|e| {
-                            PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert NUMERIC column '{}': {}",
-                                column.name(),
-                                e
-                            )))
-                        })?,
+                    Type::NUMERIC => {
+                        row.get::<_, Option<f64>>(idx)
+                            .into_pyobject(py)
+                            .map_err(|e| {
+                                PyErr::from(OxpgError::QueryFailed(format!(
+                                    "Failed to convert NUMERIC column '{}': {}",
+                                    column.name(),
+                                    e
+                                )))
+                            })?
+                    }
                     Type::FLOAT4 => {
                         row.get::<_, Option<f32>>(idx)
                             .into_pyobject(py)
