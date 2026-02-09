@@ -199,13 +199,14 @@ impl Client {
                                 e
                             )))
                         })?,
-                    _ => py.None().into_pyobject(py).map_err(|e| {
-                        PyErr::from(OxpgError::QueryFailed(format!(
-                            "Failed to convert unknown type column '{}': {}",
+                    _ => {
+                        return Err(PyErr::from(OxpgError::QueryFailed(format!(
+                            "Unsupported Postgres type '{}' (OID {}) for column '{}'",
+                            column.type_().name(),
+                            column.type_().oid(),
                             column.name(),
-                            e
-                        )))
-                    })?,
+                        ))));
+                    }
                 };
 
                 row_dict.set_item(column.name(), value).map_err(|e| {
