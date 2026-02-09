@@ -245,6 +245,13 @@ pub fn connect(
     port: u16,
     db: String,
 ) -> PyResult<Client> {
+    if dsn.is_none() && host.is_none() && user.is_none() && password.is_none() {
+        return Err(OxpgError::MissingParameter(
+            "Must specify either DSN or all individual connection parameters".to_string(),
+        )
+        .into());
+    }
+
     if dsn.is_some() && (host.is_some() || user.is_some() || password.is_some()) {
         return Err(OxpgError::InvalidParameter(
             "Cannot specify both DSN and individual connection parameters".to_string(),

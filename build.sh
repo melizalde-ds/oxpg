@@ -9,3 +9,8 @@ maturin build --release
 
 echo "✓ Wheels built in target/wheels/"
 ls -lh target/wheels/
+
+echo "Syncing uv dependencies..."
+uv sync
+
+echo "✓ Build complete!"

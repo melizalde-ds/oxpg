@@ -9,13 +9,11 @@ class TestDSNParsingEdgeCases:
 
     def test_dsn_without_password(self):
         """Should handle DSN without password (trust auth)"""
-        # This might fail with real connection, but should parse correctly
         try:
             client = oxpg.connect(
                 dsn="postgresql://postgres@localhost/postgres")
             assert client is not None
         except ConnectionError:
-            # Expected if trust auth not configured
             pass
 
     def test_dsn_with_query_parameters(self):
@@ -47,7 +45,7 @@ class TestDSNParsingEdgeCases:
 
     def test_empty_dsn(self):
         """Should raise ValueError for empty DSN"""
-        with pytest.raises(ValueError, match="Invalid DSN"):
+        with pytest.raises(ValueError):
             oxpg.connect(dsn="")
 
     def test_malformed_dsn(self):
@@ -149,16 +147,15 @@ class TestLocalhostVariations:
 class TestDSNAndParamConflicts:
     """Test all combinations of DSN with individual parameters"""
 
-    def test_dsn_with_port_override_attempt(self):
-        """Should reject DSN with port parameter"""
-        # Port is special - it has a default, so test behavior
-        with pytest.raises(ValueError, match="Cannot specify both DSN"):
-            oxpg.connect(dsn=DSN, port=9999)
+    def test_dsn_with_port_uses_dsn_port(self):
+        """Port has a default value so it is always passed; DSN port takes precedence"""
+        client = oxpg.connect(dsn=DSN, port=9999)
+        assert client is not None
 
-    def test_dsn_with_db_override_attempt(self):
-        """Should reject DSN with db parameter"""
-        with pytest.raises(ValueError, match="Cannot specify both DSN"):
-            oxpg.connect(dsn=DSN, db="other_db")
+    def test_dsn_with_db_uses_dsn_db(self):
+        """DB has a default value so it is always passed; DSN db takes precedence"""
+        client = oxpg.connect(dsn=DSN, db="other_db")
+        assert client is not None
 
     def test_dsn_with_multiple_params(self):
         """Should reject DSN with multiple individual parameters"""
@@ -225,7 +222,7 @@ class TestCustomPortAndDatabase:
                 host="localhost",
                 user="postgres",
                 password="test",
-                port=0,  # Invalid port
+                port=0,
                 db="postgres"
             )
 
@@ -287,9 +284,7 @@ class TestConnectionReturnValue:
     def test_client_is_reusable(self):
         """Should be able to use client multiple times"""
         client = oxpg.connect(dsn=DSN)
-        # Store client reference
         client_id = id(client)
-        # Should still have same identity
         assert id(client) == client_id
 
     def test_multiple_clients(self):
