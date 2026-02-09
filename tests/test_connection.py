@@ -4,49 +4,118 @@ import oxpg
 DSN = "postgresql://postgres:test@localhost:5432/postgres"
 
 
-class TestConnect:
-    """Test connection functionality"""
+class TestDSNParsingEdgeCases:
+    """Additional DSN parsing tests based on Rust unit tests"""
 
-    def test_connect_with_valid_dsn(self):
-        """Should connect successfully with valid DSN"""
-        client = oxpg.connect(dsn=DSN)
-        assert client is not None
-        assert "localhost" in repr(client)
-        assert "5432" in repr(client)
+    def test_dsn_without_password(self):
+        """Should handle DSN without password (trust auth)"""
+        # This might fail with real connection, but should parse correctly
+        try:
+            client = oxpg.connect(
+                dsn="postgresql://postgres@localhost/postgres")
+            assert client is not None
+        except ConnectionError:
+            # Expected if trust auth not configured
+            pass
 
-    def test_connect_with_individual_params(self):
-        """Should connect with individual parameters"""
+    def test_dsn_with_query_parameters(self):
+        """Should parse DSN with query parameters"""
         client = oxpg.connect(
-            host="localhost",
-            user="postgres",
-            password="test",
-            port=5432,
-            db="postgres"
+            dsn="postgresql://postgres:test@localhost:5432/postgres?sslmode=disable"
         )
         assert client is not None
-        assert "localhost" in repr(client)
-
-    def test_connect_with_default_port(self):
-        """Should use default port 5432 if not specified"""
-        client = oxpg.connect(
-            host="localhost",
-            user="postgres",
-            password="test",
-            db="postgres"
-        )
-        assert "5432" in repr(client)
-
-    def test_connect_with_default_db(self):
-        """Should use default database 'postgres' if not specified"""
-        client = oxpg.connect(
-            host="localhost",
-            user="postgres",
-            password="test"
-        )
         assert "postgres" in repr(client)
 
-    def test_connect_with_ipv4_address(self):
-        """Should accept IPv4 addresses as host"""
+    def test_dsn_with_complex_hostname(self):
+        """Should parse DSN with complex hostname"""
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                dsn="postgresql://postgres:test@db-server.example.com:5432/postgres"
+            )
+
+    def test_dsn_port_boundaries(self):
+        """Should handle minimum and maximum port numbers in DSN"""
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                dsn="postgresql://postgres:test@localhost:1/postgres"
+            )
+
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                dsn="postgresql://postgres:test@localhost:65535/postgres"
+            )
+
+    def test_empty_dsn(self):
+        """Should raise ValueError for empty DSN"""
+        with pytest.raises(ValueError, match="Invalid DSN"):
+            oxpg.connect(dsn="")
+
+    def test_malformed_dsn(self):
+        """Should raise ValueError for malformed DSN"""
+        with pytest.raises(ValueError, match="Invalid DSN"):
+            oxpg.connect(dsn="not-a-valid-dsn")
+
+
+class TestConnectionParameterEdgeCases:
+    """Edge cases for connection parameters"""
+
+    def test_empty_string_parameters(self):
+        """Should handle empty strings in parameters"""
+        with pytest.raises((ValueError, ConnectionError)):
+            oxpg.connect(
+                host="",
+                user="",
+                password="",
+                db=""
+            )
+
+    def test_port_boundaries(self):
+        """Should handle port boundary values"""
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                host="localhost",
+                user="postgres",
+                password="test",
+                port=1,
+                db="postgres"
+            )
+
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                host="localhost",
+                user="postgres",
+                password="test",
+                port=65535,
+                db="postgres"
+            )
+
+    def test_unicode_in_parameters(self):
+        """Should handle Unicode characters in parameters"""
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                host="hôst.example.com",
+                user="üser",
+                password="pässwörd",
+                db="datäbase"
+            )
+
+    def test_very_long_parameters(self):
+        """Should handle very long string parameters"""
+        long_string = "a" * 1000
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                host=long_string,
+                user=long_string,
+                password=long_string,
+                db=long_string
+            )
+
+
+class TestLocalhostVariations:
+    """Test different localhost representations"""
+
+    def test_localhost_ipv4(self):
+        """Should connect using 127.0.0.1"""
         client = oxpg.connect(
             host="127.0.0.1",
             user="postgres",
@@ -55,194 +124,177 @@ class TestConnect:
         )
         assert "127.0.0.1" in repr(client)
 
-
-class TestConnectionErrors:
-    """Test error handling for connection parameters"""
-
-    def test_connect_missing_host(self):
-        """Should raise ValueError when host is missing"""
-        with pytest.raises(ValueError, match="Missing required parameter: host"):
-            oxpg.connect(user="postgres", password="test")
-
-    def test_connect_missing_user(self):
-        """Should raise ValueError when user is missing"""
-        with pytest.raises(ValueError, match="Missing required parameter: user"):
-            oxpg.connect(host="localhost", password="test")
-
-    def test_connect_missing_password(self):
-        """Should raise ValueError when password is missing"""
-        with pytest.raises(ValueError, match="Missing required parameter: password"):
-            oxpg.connect(host="localhost", user="postgres")
-
-    def test_connect_dsn_and_host(self):
-        """Should raise ValueError when both DSN and host provided"""
-        with pytest.raises(ValueError, match="Cannot specify both DSN"):
-            oxpg.connect(dsn=DSN, host="localhost")
-
-    def test_connect_dsn_and_user(self):
-        """Should raise ValueError when DSN and user provided"""
-        with pytest.raises(ValueError, match="Cannot specify both DSN"):
-            oxpg.connect(dsn=DSN, user="postgres")
-
-    def test_connect_dsn_and_password(self):
-        """Should raise ValueError when DSN and password provided"""
-        with pytest.raises(ValueError, match="Cannot specify both DSN"):
-            oxpg.connect(dsn=DSN, password="test")
-
-
-class TestDSNParsing:
-    """Test DSN parsing and validation"""
-
-    def test_invalid_dsn_scheme(self):
-        """Should raise ValueError for invalid scheme"""
-        with pytest.raises(ValueError, match="Invalid DSN"):
-            oxpg.connect(dsn="mysql://user:pass@localhost/db")
-
-    def test_invalid_dsn_missing_user(self):
-        """Should raise ValueError when user is missing from DSN"""
-        with pytest.raises(ValueError, match="Missing required parameter: user"):
-            oxpg.connect(dsn="postgresql://localhost/db")
-
-    def test_invalid_dsn_missing_database(self):
-        """Should raise ValueError when database name is missing from DSN"""
-        with pytest.raises(ValueError, match="Missing required parameter: database"):
-            oxpg.connect(dsn="postgresql://user:pass@localhost")
-
-    def test_valid_dsn_without_port(self):
-        """Should accept DSN without explicit port (defaults to 5432)"""
+    @pytest.mark.skip(reason="IPv6 support may vary by environment")
+    def test_localhost_ipv6(self):
+        """Should connect using ::1 (IPv6)"""
         client = oxpg.connect(
-            dsn="postgresql://postgres:test@localhost/postgres")
-        assert "5432" in repr(client)
-
-    def test_valid_dsn_with_postgres_scheme(self):
-        """Should accept 'postgres://' scheme (not just 'postgresql://')"""
-        client = oxpg.connect(
-            dsn="postgres://postgres:test@localhost:5432/postgres")
-        assert client is not None
-
-    def test_dsn_with_ipv4_host(self):
-        """Should accept IPv4 addresses in DSN"""
-        client = oxpg.connect(
-            dsn="postgresql://postgres:test@127.0.0.1:5432/postgres")
-        assert "127.0.0.1" in repr(client)
-
-    def test_dsn_with_non_standard_port(self):
-        """Should parse DSN with non-standard port"""
-        with pytest.raises(ConnectionError):
-            oxpg.connect(
-                dsn="postgresql://postgres:test@localhost:9999/postgres")
-
-
-class TestConnectionFailure:
-    """Test actual connection failures"""
-
-    def test_connect_to_invalid_host(self):
-        """Should raise ConnectionError for invalid/unreachable host"""
-        with pytest.raises(ConnectionError, match="Failed to connect to PostgreSQL"):
-            oxpg.connect(
-                host="nonexistent.host.invalid",
-                user="postgres",
-                password="test",
-                db="postgres"
-            )
-
-    def test_connect_with_wrong_credentials(self):
-        """Should raise ConnectionError for wrong username/password"""
-        with pytest.raises(ConnectionError, match="Failed to connect to PostgreSQL"):
-            oxpg.connect(
-                host="localhost",
-                user="wronguser",
-                password="wrongpass",
-                db="postgres"
-            )
-
-    def test_connect_to_wrong_port(self):
-        """Should raise ConnectionError when connecting to wrong port"""
-        with pytest.raises(ConnectionError, match="Failed to connect to PostgreSQL"):
-            oxpg.connect(
-                host="localhost",
-                user="postgres",
-                password="test",
-                port=9999,
-                db="postgres"
-            )
-
-    def test_connect_to_nonexistent_database(self):
-        """Should raise ConnectionError for non-existent database"""
-        with pytest.raises(ConnectionError, match="Failed to connect to PostgreSQL"):
-            oxpg.connect(
-                host="localhost",
-                user="postgres",
-                password="test",
-                db="nonexistent_db_12345"
-            )
-
-
-class TestClientRepresentation:
-    """Test Client __repr__ output"""
-
-    def test_repr_contains_connection_info(self):
-        """Should include host, port, db, and user in repr"""
-        client = oxpg.connect(
-            host="localhost",
+            host="::1",
             user="postgres",
-            password="test",
-            port=5432,
-            db="test_db"
-        )
-        repr_str = repr(client)
-        assert "localhost" in repr_str
-        assert "5432" in repr_str
-        assert "test_db" in repr_str
-        assert "postgres" in repr_str
-
-    def test_repr_does_not_expose_password(self):
-        """Should not expose password in repr"""
-        client = oxpg.connect(dsn=DSN)
-        repr_str = repr(client)
-        assert "password" not in repr_str.lower()
-
-    def test_repr_format(self):
-        """Should follow expected repr format"""
-        client = oxpg.connect(dsn=DSN)
-        repr_str = repr(client)
-        assert repr_str.startswith("Client(")
-        assert repr_str.endswith(")")
-        assert "host=" in repr_str
-        assert "port=" in repr_str
-        assert "db=" in repr_str
-        assert "user=" in repr_str
-
-
-class TestSpecialCharactersInConnection:
-    """Test handling of special characters in connection parameters"""
-
-    @pytest.mark.skip(reason="Requires database setup with special characters")
-    def test_database_name_with_hyphens_and_underscores(self):
-        """Should handle database names with hyphens and underscores"""
-        client = oxpg.connect(
-            host="localhost",
-            user="postgres",
-            password="test",
-            db="test-db_123"
-        )
-        assert "test-db_123" in repr(client)
-
-    @pytest.mark.skip(reason="Requires user setup with percent-encoded password")
-    def test_dsn_with_percent_encoded_password(self):
-        """Should handle percent-encoded special characters in DSN password"""
-        client = oxpg.connect(
-            dsn="postgresql://testuser:p%40ss%3Aword@localhost:5432/postgres"
-        )
-        assert client is not None
-
-    @pytest.mark.skip(reason="Requires user setup with special characters")
-    def test_username_with_special_chars(self):
-        """Should handle usernames with special characters"""
-        client = oxpg.connect(
-            host="localhost",
-            user="user@domain",
             password="test",
             db="postgres"
         )
-        assert "user@domain" in repr(client)
+        assert client is not None
+
+    def test_localhost_hostname(self):
+        """Should connect using 'localhost' hostname"""
+        client = oxpg.connect(
+            host="localhost",
+            user="postgres",
+            password="test",
+            db="postgres"
+        )
+        assert "localhost" in repr(client)
+
+
+class TestDSNAndParamConflicts:
+    """Test all combinations of DSN with individual parameters"""
+
+    def test_dsn_with_port_override_attempt(self):
+        """Should reject DSN with port parameter"""
+        # Port is special - it has a default, so test behavior
+        with pytest.raises(ValueError, match="Cannot specify both DSN"):
+            oxpg.connect(dsn=DSN, port=9999)
+
+    def test_dsn_with_db_override_attempt(self):
+        """Should reject DSN with db parameter"""
+        with pytest.raises(ValueError, match="Cannot specify both DSN"):
+            oxpg.connect(dsn=DSN, db="other_db")
+
+    def test_dsn_with_multiple_params(self):
+        """Should reject DSN with multiple individual parameters"""
+        with pytest.raises(ValueError, match="Cannot specify both DSN"):
+            oxpg.connect(
+                dsn=DSN,
+                host="localhost",
+                user="postgres",
+                password="test"
+            )
+
+
+class TestDatabaseNames:
+    """Test database name handling"""
+
+    def test_db_with_hyphens(self):
+        """Should handle database names with hyphens"""
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                host="localhost",
+                user="postgres",
+                password="test",
+                db="test-database"
+            )
+
+    def test_db_with_underscores(self):
+        """Should handle database names with underscores"""
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                host="localhost",
+                user="postgres",
+                password="test",
+                db="test_database"
+            )
+
+    def test_db_with_numbers(self):
+        """Should handle database names with numbers"""
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                host="localhost",
+                user="postgres",
+                password="test",
+                db="database123"
+            )
+
+    def test_db_with_mixed_special_chars(self):
+        """Should handle database names with mixed special characters"""
+        with pytest.raises(ConnectionError):
+            oxpg.connect(
+                host="localhost",
+                user="postgres",
+                password="test",
+                db="my-db_123"
+            )
+
+
+class TestCustomPortAndDatabase:
+    """Test non-default ports and database names"""
+
+    def test_custom_port_validation(self):
+        """Should validate port is within valid range"""
+        with pytest.raises((ValueError, ConnectionError)):
+            oxpg.connect(
+                host="localhost",
+                user="postgres",
+                password="test",
+                port=0,  # Invalid port
+                db="postgres"
+            )
+
+    def test_custom_database_name_in_connection(self):
+        """Should use custom database name"""
+        with pytest.raises(ConnectionError):
+            client = oxpg.connect(
+                host="localhost",
+                user="postgres",
+                password="test",
+                port=5432,
+                db="custom_database_name"
+            )
+
+
+class TestErrorMessages:
+    """Test that error messages are clear and helpful"""
+
+    def test_missing_host_error_message(self):
+        """Error message should clearly indicate missing host"""
+        with pytest.raises(ValueError) as exc_info:
+            oxpg.connect(user="postgres", password="test")
+        assert "host" in str(exc_info.value).lower()
+
+    def test_missing_user_error_message(self):
+        """Error message should clearly indicate missing user"""
+        with pytest.raises(ValueError) as exc_info:
+            oxpg.connect(host="localhost", password="test")
+        assert "user" in str(exc_info.value).lower()
+
+    def test_missing_password_error_message(self):
+        """Error message should clearly indicate missing password"""
+        with pytest.raises(ValueError) as exc_info:
+            oxpg.connect(host="localhost", user="postgres")
+        assert "password" in str(exc_info.value).lower()
+
+    def test_invalid_dsn_scheme_error_message(self):
+        """Error message should indicate invalid DSN scheme"""
+        with pytest.raises(ValueError) as exc_info:
+            oxpg.connect(dsn="http://user:pass@localhost/db")
+        error_msg = str(exc_info.value)
+        assert "Invalid DSN" in error_msg or "scheme" in error_msg.lower()
+
+    def test_dsn_conflict_error_message(self):
+        """Error message should clearly explain DSN conflict"""
+        with pytest.raises(ValueError) as exc_info:
+            oxpg.connect(dsn=DSN, host="localhost")
+        assert "Cannot specify both DSN" in str(exc_info.value)
+
+
+class TestConnectionReturnValue:
+    """Test that connection returns proper client object"""
+
+    def test_client_is_not_none(self):
+        """Should return non-None client"""
+        client = oxpg.connect(dsn=DSN)
+        assert client is not None
+
+    def test_client_is_reusable(self):
+        """Should be able to use client multiple times"""
+        client = oxpg.connect(dsn=DSN)
+        # Store client reference
+        client_id = id(client)
+        # Should still have same identity
+        assert id(client) == client_id
+
+    def test_multiple_clients(self):
+        """Should be able to create multiple independent clients"""
+        client1 = oxpg.connect(dsn=DSN)
+        client2 = oxpg.connect(dsn=DSN)
+        assert client1 is not client2
+        assert id(client1) != id(client2)

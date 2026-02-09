@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 thiserror = "2.0.18"
 anyhow = "1.0.101"
-pyo3 = "0.26"
+pyo3 = { version = "0.26", features = ["auto-initialize"] }
 pyo3-async-runtimes = { version = "0.26.0", features = ["tokio-runtime"] }
 tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros"] }
 tokio-postgres = { version = "0.7.16", features = [
