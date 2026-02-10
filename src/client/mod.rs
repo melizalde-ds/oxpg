@@ -75,6 +75,41 @@ impl Client {
         Ok(result)
     }
 
+    fn execute<'a>(
+        &'a self,
+        py: Python<'a>,
+        query: String,
+        args: &Bound<'a, PyTuple>,
+    ) -> PyResult<u64> {
+        let statement = py
+            .detach(|| {
+                self.runtime
+                    .block_on(async { self.client.prepare(&query).await })
+            })
+            .map_err(|e| {
+                PyErr::from(OxpgError::ExecutionError(format!(
+                    "Prepare failed: {:?}",
+                    e
+                )))
+            })?;
+        let params = conversions::prepare_params(&statement, args)?;
+        let referenced_params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        let rows_affected = py
+            .detach(|| {
+                self.runtime
+                    .block_on(async { self.client.execute(&statement, &referenced_params).await })
+            })
+            .map_err(|e| {
+                PyErr::from(OxpgError::ExecutionError(format!(
+                    "Execute failed: {:?}",
+                    e
+                )))
+            })?;
+        Ok(rows_affected)
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "Client(host='{}', port={}, db='{}', user='{}')",
