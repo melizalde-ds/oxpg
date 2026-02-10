@@ -5,13 +5,45 @@ import builtins
 import typing
 __all__ = [
     "Client",
+    "DataError",
+    "DatabaseError",
+    "Error",
+    "InterfaceError",
+    "InternalError",
+    "OperationalError",
     "connect",
 ]
+
 
 @typing.final
 class Client:
     def query(self, query: builtins.str, *args: typing.Any) -> list: ...
     def __repr__(self) -> builtins.str: ...
 
-def connect(dsn: typing.Optional[builtins.str] = None, host: typing.Optional[builtins.str] = None, user: typing.Optional[builtins.str] = None, password: typing.Optional[builtins.str] = None, port: builtins.int = 5432, db: builtins.str = 'postgres') -> Client: ...
 
+class DataError(builtins.DatabaseError):
+    ...
+
+
+class DatabaseError(builtins.Error):
+    ...
+
+
+class Error(builtins.Exception):
+    ...
+
+
+class InterfaceError(builtins.Error):
+    ...
+
+
+class InternalError(builtins.DatabaseError):
+    ...
+
+
+class OperationalError(builtins.DatabaseError):
+    ...
+
+
+def connect(dsn: typing.Optional[builtins.str] = None, host: typing.Optional[builtins.str] = None, user: typing.Optional[builtins.str]
+            = None, password: typing.Optional[builtins.str] = None, port: builtins.int = 5432, db: builtins.str = 'postgres') -> Client: ...

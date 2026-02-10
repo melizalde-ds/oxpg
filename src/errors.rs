@@ -1,6 +1,6 @@
-use pyo3::create_exception;
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
+use pyo3_stub_gen::create_exception;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -69,5 +69,6 @@ pub fn register_exceptions(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("DataError", m.py().get_type::<DataError>())?;
     m.add("OperationalError", m.py().get_type::<OperationalError>())?;
     m.add("InternalError", m.py().get_type::<InternalError>())?;
+
     Ok(())
 }
