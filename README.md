@@ -119,7 +119,6 @@ except oxpg.DatabaseError as e:
 docker compose -f docker-compose.test.yaml up -d
 
 # Install dev dependencies
-cargo install
 uv sync
 
 > [!NOTE]
