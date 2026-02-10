@@ -14,36 +14,29 @@ __all__ = [
     "connect",
 ]
 
-
 @typing.final
 class Client:
     def query(self, query: builtins.str, *args: typing.Any) -> list: ...
+    def execute(self, query: builtins.str, *args: typing.Any) -> builtins.int: ...
     def __repr__(self) -> builtins.str: ...
-
 
 class DataError(DatabaseError):
     ...
 
-
 class DatabaseError(Error):
     ...
-
 
 class Error(builtins.Exception):
     ...
 
-
 class InterfaceError(Error):
     ...
-
 
 class InternalError(DatabaseError):
     ...
 
-
 class OperationalError(DatabaseError):
     ...
 
+def connect(dsn: typing.Optional[builtins.str] = None, host: typing.Optional[builtins.str] = None, user: typing.Optional[builtins.str] = None, password: typing.Optional[builtins.str] = None, port: builtins.int = 5432, db: builtins.str = 'postgres') -> Client: ...
 
-def connect(dsn: typing.Optional[builtins.str] = None, host: typing.Optional[builtins.str] = None, user: typing.Optional[builtins.str]
-            = None, password: typing.Optional[builtins.str] = None, port: builtins.int = 5432, db: builtins.str = 'postgres') -> Client: ...
