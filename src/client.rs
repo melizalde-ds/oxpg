@@ -1,6 +1,10 @@
 use crate::errors::OxpgError;
 use chrono::{DateTime, NaiveDate, Utc};
-use pyo3::types::{PyDict, PyDictMethods, PyList, PyListMethods};
+use pyo3::types::{
+    PyAnyMethods, PyBool, PyByteArray, PyBytes, PyDate, PyDateTime, PyDelta, PyDict, PyDictMethods,
+    PyFloat, PyInt, PyList, PyListMethods, PyNone, PyString, PyTime, PyTuple, PyTupleMethods,
+    PyTypeMethods,
+};
 use pyo3::{Bound, IntoPyObject, PyErr, PyResult, Python, pyclass, pyfunction, pymethods};
 use pyo3_stub_gen::derive::*;
 use tokio_postgres::types::Type;
@@ -21,13 +25,133 @@ pub struct Client {
 #[gen_stub_pymethods]
 #[pymethods]
 impl Client {
-    fn query<'a>(&'a self, py: Python<'a>, query: String) -> PyResult<Bound<'a, PyList>> {
-        let rows = self
-            .runtime
-            .block_on(async { self.client.query(&query, &[]).await })
+    #[pyo3(signature = (query, *args))]
+    fn query<'a>(
+        &'a self,
+        py: Python<'a>,
+        query: String,
+        args: &Bound<'a, PyTuple>,
+    ) -> PyResult<Bound<'a, PyList>> {
+        let statement = py
+            .detach(|| {
+                self.runtime
+                    .block_on(async { self.client.prepare(&query).await })
+            })
+            .map_err(|e| PyErr::from(OxpgError::QueryFailed(format!("Prepare failed: {:?}", e))))?;
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        for (idx, arg) in args.iter().enumerate() {
+            let expected_type = statement.params().get(idx);
+
+            if arg.is_instance_of::<PyBool>() {
+                let val: bool = arg.extract()?;
+                params.push(Box::new(val));
+            } else if arg.is_instance_of::<PyInt>() {
+                match expected_type {
+                    Some(&Type::INT2) => params.push(Box::new(arg.extract::<i16>()?)),
+                    Some(&Type::INT4) => params.push(Box::new(arg.extract::<i32>()?)),
+                    _ => params.push(Box::new(arg.extract::<i64>()?)),
+                }
+            } else if arg.is_instance_of::<PyFloat>() {
+                match expected_type {
+                    Some(&Type::FLOAT4) => params.push(Box::new(arg.extract::<f32>()?)),
+                    _ => params.push(Box::new(arg.extract::<f64>()?)),
+                }
+            } else if arg.is_instance_of::<PyString>() {
+                let val: String = arg.extract()?;
+                params.push(Box::new(val));
+            } else if arg.is_instance_of::<PyNone>() {
+                match expected_type {
+                    Some(&Type::BOOL) => params.push(Box::new(None::<bool>)),
+                    Some(&Type::INT2) => params.push(Box::new(None::<i16>)),
+                    Some(&Type::INT4) => params.push(Box::new(None::<i32>)),
+                    Some(&Type::INT8) => params.push(Box::new(None::<i64>)),
+                    Some(&Type::FLOAT4) => params.push(Box::new(None::<f32>)),
+                    Some(&Type::FLOAT8) => params.push(Box::new(None::<f64>)),
+                    Some(&Type::BYTEA) => params.push(Box::new(None::<Vec<u8>>)),
+                    Some(&Type::DATE) => params.push(Box::new(None::<NaiveDate>)),
+                    Some(&Type::TIMESTAMP) => params.push(Box::new(None::<chrono::NaiveDateTime>)),
+                    Some(&Type::TIMESTAMPTZ) => params.push(Box::new(None::<DateTime<Utc>>)),
+                    Some(&Type::TIME) => params.push(Box::new(None::<chrono::NaiveTime>)),
+                    Some(&Type::UUID) => params.push(Box::new(None::<uuid::Uuid>)),
+                    _ => params.push(Box::new(None::<String>)),
+                }
+            } else if arg.is_instance_of::<PyBytes>() || arg.is_instance_of::<PyByteArray>() {
+                let val: Vec<u8> = arg.extract()?;
+                params.push(Box::new(val));
+            } else if arg.is_instance_of::<PyDateTime>() {
+                let year: i32 = arg.getattr("year")?.extract()?;
+                let month: u32 = arg.getattr("month")?.extract()?;
+                let day: u32 = arg.getattr("day")?.extract()?;
+                let hour: u32 = arg.getattr("hour")?.extract()?;
+                let minute: u32 = arg.getattr("minute")?.extract()?;
+                let second: u32 = arg.getattr("second")?.extract()?;
+                let microsecond: u32 = arg.getattr("microsecond")?.extract()?;
+
+                let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)
+                    .and_then(|d| d.and_hms_micro_opt(hour, minute, second, microsecond))
+                    .ok_or_else(|| {
+                        PyErr::from(OxpgError::QueryFailed("Invalid datetime".to_string()))
+                    })?;
+
+                match expected_type {
+                    Some(&Type::TIMESTAMP) => params.push(Box::new(naive)),
+                    _ => {
+                        let dt = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
+                        params.push(Box::new(dt));
+                    }
+                }
+            } else if arg.is_instance_of::<PyDate>() {
+                let year: i32 = arg.getattr("year")?.extract()?;
+                let month: u32 = arg.getattr("month")?.extract()?;
+                let day: u32 = arg.getattr("day")?.extract()?;
+
+                let date = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
+                    PyErr::from(OxpgError::QueryFailed("Invalid date".to_string()))
+                })?;
+
+                params.push(Box::new(date));
+            } else if arg.is_instance_of::<PyTime>() {
+                let hour: u32 = arg.getattr("hour")?.extract()?;
+                let minute: u32 = arg.getattr("minute")?.extract()?;
+                let second: u32 = arg.getattr("second")?.extract()?;
+                let microsecond: u32 = arg.getattr("microsecond")?.extract()?;
+
+                let time = chrono::NaiveTime::from_hms_micro_opt(hour, minute, second, microsecond)
+                    .ok_or_else(|| {
+                        PyErr::from(OxpgError::QueryFailed("Invalid time".to_string()))
+                    })?;
+
+                params.push(Box::new(time));
+            } else if arg.is_instance_of::<PyDelta>() {
+                let days: i64 = arg.getattr("days")?.extract()?;
+                let seconds: i64 = arg.getattr("seconds")?.extract()?;
+                let microseconds: i64 = arg.getattr("microseconds")?.extract()?;
+
+                let interval_str = format!(
+                    "{} days {} seconds {} microseconds",
+                    days, seconds, microseconds
+                );
+
+                params.push(Box::new(interval_str));
+            } else {
+                return Err(PyErr::from(OxpgError::QueryFailed(format!(
+                    "Unsupported parameter type: {}. Supported types: int, float, bool, str, bytes, bytearray, datetime, date, time, timedelta, None",
+                    arg.get_type().name()?
+                ))));
+            }
+        }
+
+        let referenced_params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        let rows = py
+            .detach(|| {
+                self.runtime
+                    .block_on(async { self.client.query(&query, &referenced_params).await })
+            })
             .map_err(|e| {
                 PyErr::from(OxpgError::QueryFailed(format!(
-                    "Failed to execute query: {}",
+                    "Failed to execute query: {:?}",
                     e
                 )))
             })?;
@@ -42,7 +166,7 @@ impl Client {
                             .into_pyobject(py)
                             .map_err(|e| {
                                 PyErr::from(OxpgError::QueryFailed(format!(
-                                    "Failed to convert BOOL column '{}': {}",
+                                    "Failed to convert BOOL column '{}': {:?}",
                                     column.name(),
                                     e
                                 )))
@@ -53,7 +177,7 @@ impl Client {
                         .into_pyobject(py)
                         .map_err(|e| {
                             PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert BYTEA column '{}': {}",
+                                "Failed to convert BYTEA column '{}': {:?}",
                                 column.name(),
                                 e
                             )))
@@ -64,7 +188,7 @@ impl Client {
                         .into_pyobject(py)
                         .map_err(|e| {
                             PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert DATE column '{}': {}",
+                                "Failed to convert DATE column '{}': {:?}",
                                 column.name(),
                                 e
                             )))
@@ -74,7 +198,7 @@ impl Client {
                             .into_pyobject(py)
                             .map_err(|e| {
                                 PyErr::from(OxpgError::QueryFailed(format!(
-                                    "Failed to convert INT2 column '{}': {}",
+                                    "Failed to convert INT2 column '{}': {:?}",
                                     column.name(),
                                     e
                                 )))
@@ -85,7 +209,7 @@ impl Client {
                             .into_pyobject(py)
                             .map_err(|e| {
                                 PyErr::from(OxpgError::QueryFailed(format!(
-                                    "Failed to convert INT4 column '{}': {}",
+                                    "Failed to convert INT4 column '{}': {:?}",
                                     column.name(),
                                     e
                                 )))
@@ -96,7 +220,7 @@ impl Client {
                             .into_pyobject(py)
                             .map_err(|e| {
                                 PyErr::from(OxpgError::QueryFailed(format!(
-                                    "Failed to convert INT8 column '{}': {}",
+                                    "Failed to convert INT8 column '{}': {:?}",
                                     column.name(),
                                     e
                                 )))
@@ -108,28 +232,27 @@ impl Client {
                         .into_pyobject(py)
                         .map_err(|e| {
                             PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert JSON/JSONB column '{}': {}",
+                                "Failed to convert JSON/JSONB column '{}': {:?}",
                                 column.name(),
                                 e
                             )))
                         })?,
-                    Type::NUMERIC => {
-                        row.get::<_, Option<f64>>(idx)
-                            .into_pyobject(py)
-                            .map_err(|e| {
-                                PyErr::from(OxpgError::QueryFailed(format!(
-                                    "Failed to convert NUMERIC column '{}': {}",
-                                    column.name(),
-                                    e
-                                )))
-                            })?
-                    }
+                    Type::NUMERIC => row
+                        .try_get::<_, Option<String>>(idx)
+                        .map_err(|e| {
+                            PyErr::from(OxpgError::QueryFailed(format!(
+                                "Failed to convert NUMERIC column '{}' to string: {:?}",
+                                column.name(),
+                                e
+                            )))
+                        })?
+                        .into_pyobject(py)?,
                     Type::FLOAT4 => {
                         row.get::<_, Option<f32>>(idx)
                             .into_pyobject(py)
                             .map_err(|e| {
                                 PyErr::from(OxpgError::QueryFailed(format!(
-                                    "Failed to convert FLOAT4 column '{}': {}",
+                                    "Failed to convert FLOAT4 column '{}': {:?}",
                                     column.name(),
                                     e
                                 )))
@@ -140,7 +263,7 @@ impl Client {
                             .into_pyobject(py)
                             .map_err(|e| {
                                 PyErr::from(OxpgError::QueryFailed(format!(
-                                    "Failed to convert FLOAT8 column '{}': {}",
+                                    "Failed to convert FLOAT8 column '{}': {:?}",
                                     column.name(),
                                     e
                                 )))
@@ -151,7 +274,7 @@ impl Client {
                         .into_pyobject(py)
                         .map_err(|e| {
                             PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert TEXT/VARCHAR column '{}': {}",
+                                "Failed to convert TEXT/VARCHAR column '{}': {:?}",
                                 column.name(),
                                 e
                             )))
@@ -162,7 +285,7 @@ impl Client {
                         .into_pyobject(py)
                         .map_err(|e| {
                             PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert TIME column '{}': {}",
+                                "Failed to convert TIME column '{}': {:?}",
                                 column.name(),
                                 e
                             )))
@@ -173,7 +296,7 @@ impl Client {
                         .into_pyobject(py)
                         .map_err(|e| {
                             PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert TIMESTAMP column '{}': {}",
+                                "Failed to convert TIMESTAMP column '{}': {:?}",
                                 column.name(),
                                 e
                             )))
@@ -184,7 +307,7 @@ impl Client {
                         .into_pyobject(py)
                         .map_err(|e| {
                             PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert TIMESTAMPTZ column '{}': {}",
+                                "Failed to convert TIMESTAMPTZ column '{}': {:?}",
                                 column.name(),
                                 e
                             )))
@@ -195,7 +318,7 @@ impl Client {
                         .into_pyobject(py)
                         .map_err(|e| {
                             PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert UUID column '{}': {}",
+                                "Failed to convert UUID column '{}': {:?}",
                                 column.name(),
                                 e
                             )))
@@ -212,7 +335,7 @@ impl Client {
 
                 row_dict.set_item(column.name(), value).map_err(|e| {
                     PyErr::from(OxpgError::QueryFailed(format!(
-                        "Failed to add column '{}' to result dictionary: {}",
+                        "Failed to add column '{}' to result dictionary: {:?}",
                         column.name(),
                         e
                     )))
@@ -220,7 +343,7 @@ impl Client {
             }
             result.append(row_dict).map_err(|e| {
                 PyErr::from(OxpgError::QueryFailed(format!(
-                    "Failed to append row to result list: {}",
+                    "Failed to append row to result list: {:?}",
                     e
                 )))
             })?;
@@ -240,6 +363,7 @@ impl Client {
 #[pyfunction]
 #[pyo3(signature = (dsn=None, host=None, user=None, password=None, port=5432, db="postgres".to_string()))]
 pub fn connect(
+    py: Python<'_>,
     dsn: Option<String>,
     host: Option<String>,
     user: Option<String>,
@@ -284,16 +408,16 @@ pub fn connect(
 
     let runtime = tokio::runtime::Runtime::new().map_err(|e| {
         PyErr::from(OxpgError::RuntimeFailed(format!(
-            "Failed to create Tokio runtime: {}",
+            "Failed to create Tokio runtime: {:?}",
             e
         )))
     })?;
 
-    let (client, connection) = runtime
-        .block_on(async { config.connect(tokio_postgres::NoTls).await })
+    let (client, connection) = py
+        .detach(|| runtime.block_on(async { config.connect(tokio_postgres::NoTls).await }))
         .map_err(|e| {
             PyErr::from(OxpgError::ConnectionFailed(format!(
-                "Failed to connect to PostgreSQL: {}",
+                "Failed to connect to PostgreSQL: {:?}",
                 e
             )))
         })?;
@@ -739,8 +863,9 @@ mod tests {
 
         #[test]
         fn rejects_both_dsn_and_host() {
-            Python::attach(|_py| {
+            Python::attach(|py| {
                 let result = connect(
+                    py,
                     Some("postgresql://user:pass@localhost/db".to_string()),
                     Some("localhost".to_string()),
                     None,
@@ -759,8 +884,9 @@ mod tests {
 
         #[test]
         fn rejects_dsn_and_user() {
-            Python::attach(|_py| {
+            Python::attach(|py| {
                 let result = connect(
+                    py,
                     Some("postgresql://user:pass@localhost/db".to_string()),
                     None,
                     Some("user".to_string()),
@@ -775,8 +901,9 @@ mod tests {
 
         #[test]
         fn rejects_dsn_and_password() {
-            Python::attach(|_py| {
+            Python::attach(|py| {
                 let result = connect(
+                    py,
                     Some("postgresql://user:pass@localhost/db".to_string()),
                     None,
                     None,
@@ -791,8 +918,9 @@ mod tests {
 
         #[test]
         fn rejects_missing_host_when_no_dsn() {
-            Python::attach(|_py| {
+            Python::attach(|py| {
                 let result = connect(
+                    py,
                     None,
                     None,
                     Some("user".to_string()),
@@ -811,8 +939,9 @@ mod tests {
 
         #[test]
         fn rejects_missing_user_when_no_dsn() {
-            Python::attach(|_py| {
+            Python::attach(|py| {
                 let result = connect(
+                    py,
                     None,
                     Some("localhost".to_string()),
                     None,
@@ -831,8 +960,9 @@ mod tests {
 
         #[test]
         fn rejects_missing_password_when_no_dsn() {
-            Python::attach(|_py| {
+            Python::attach(|py| {
                 let result = connect(
+                    py,
                     None,
                     Some("localhost".to_string()),
                     Some("user".to_string()),
@@ -851,8 +981,9 @@ mod tests {
 
         #[test]
         fn allows_custom_port_with_individual_params() {
-            Python::attach(|_py| {
+            Python::attach(|py| {
                 let result = connect(
+                    py,
                     None,
                     Some("nonexistent-host-for-testing".to_string()),
                     Some("user".to_string()),
@@ -870,8 +1001,9 @@ mod tests {
 
         #[test]
         fn uses_custom_database_name() {
-            Python::attach(|_py| {
+            Python::attach(|py| {
                 let result = connect(
+                    py,
                     None,
                     Some("nonexistent-host-for-testing".to_string()),
                     Some("user".to_string()),
