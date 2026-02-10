@@ -21,11 +21,11 @@ class Client:
     def __repr__(self) -> builtins.str: ...
 
 
-class DataError(builtins.DatabaseError):
+class DataError(DatabaseError):
     ...
 
 
-class DatabaseError(builtins.Error):
+class DatabaseError(Error):
     ...
 
 
@@ -33,15 +33,15 @@ class Error(builtins.Exception):
     ...
 
 
-class InterfaceError(builtins.Error):
+class InterfaceError(Error):
     ...
 
 
-class InternalError(builtins.DatabaseError):
+class InternalError(DatabaseError):
     ...
 
 
-class OperationalError(builtins.DatabaseError):
+class OperationalError(DatabaseError):
     ...
 
 

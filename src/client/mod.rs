@@ -4,6 +4,7 @@ mod conversions;
 #[cfg(test)]
 mod tests;
 
+use crate::client::config::validate_connect_params;
 use crate::errors::OxpgError;
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyTuple};
@@ -52,7 +53,7 @@ impl Client {
         let rows = py
             .detach(|| {
                 self.runtime
-                    .block_on(async { self.client.query(&query, &referenced_params).await })
+                    .block_on(async { self.client.query(&statement, &referenced_params).await })
             })
             .map_err(|e| {
                 PyErr::from(OxpgError::ExecutionError(format!(
@@ -94,19 +95,7 @@ pub fn connect(
     port: u16,
     db: String,
 ) -> PyResult<Client> {
-    if dsn.is_none() && host.is_none() && user.is_none() && password.is_none() {
-        return Err(OxpgError::MissingParameter(
-            "Must specify either DSN or all individual connection parameters".to_string(),
-        )
-        .into());
-    }
-
-    if dsn.is_some() && (host.is_some() || user.is_some() || password.is_some()) {
-        return Err(OxpgError::InvalidParameter(
-            "Cannot specify both DSN and individual connection parameters".to_string(),
-        )
-        .into());
-    }
+    validate_connect_params(&dsn, &host, &user, &password)?;
 
     let mut config = Config::new();
 

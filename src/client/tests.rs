@@ -1,5 +1,4 @@
 use super::config::*;
-use super::*;
 use pyo3::Python;
 use tokio_postgres::Config;
 
@@ -370,165 +369,105 @@ mod extract_host_from_dsn {
 }
 
 mod connect {
-    use super::*;
+    use crate::client::config::validate_connect_params;
 
     #[test]
     fn rejects_both_dsn_and_host() {
-        Python::attach(|py| {
-            let result = connect(
-                py,
-                Some("postgresql://user:pass@localhost/db".to_string()),
-                Some("localhost".to_string()),
-                None,
-                None,
-                5432,
-                "db".to_string(),
-            );
+        let result = validate_connect_params(
+            &Some("postgresql://user:pass@localhost/db".to_string()),
+            &Some("localhost".to_string()),
+            &None,
+            &None,
+        );
 
-            assert!(result.is_err());
-            if let Err(e) = result {
-                let error_msg = e.to_string();
-                assert!(error_msg.contains("Cannot specify both DSN"));
-            }
-        });
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Cannot specify both DSN"));
     }
 
     #[test]
     fn rejects_dsn_and_user() {
-        Python::attach(|py| {
-            let result = connect(
-                py,
-                Some("postgresql://user:pass@localhost/db".to_string()),
-                None,
-                Some("user".to_string()),
-                None,
-                5432,
-                "db".to_string(),
-            );
+        let result = validate_connect_params(
+            &Some("postgresql://user:pass@localhost/db".to_string()),
+            &None,
+            &Some("user".to_string()),
+            &None,
+        );
 
-            assert!(result.is_err());
-        });
+        assert!(result.is_err());
     }
 
     #[test]
     fn rejects_dsn_and_password() {
-        Python::attach(|py| {
-            let result = connect(
-                py,
-                Some("postgresql://user:pass@localhost/db".to_string()),
-                None,
-                None,
-                Some("pass".to_string()),
-                5432,
-                "db".to_string(),
-            );
+        let result = validate_connect_params(
+            &Some("postgresql://user:pass@localhost/db".to_string()),
+            &None,
+            &None,
+            &Some("pass".to_string()),
+        );
 
-            assert!(result.is_err());
-        });
+        assert!(result.is_err());
     }
 
     #[test]
     fn rejects_missing_host_when_no_dsn() {
-        Python::attach(|py| {
-            let result = connect(
-                py,
-                None,
-                None,
-                Some("user".to_string()),
-                Some("pass".to_string()),
-                5432,
-                "db".to_string(),
-            );
+        let result = validate_connect_params(
+            &None,
+            &None,
+            &Some("user".to_string()),
+            &Some("pass".to_string()),
+        );
 
-            assert!(result.is_err());
-            if let Err(e) = result {
-                let error_msg = e.to_string();
-                assert!(error_msg.contains("host"));
-            }
-        });
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("host"));
     }
 
     #[test]
     fn rejects_missing_user_when_no_dsn() {
-        Python::attach(|py| {
-            let result = connect(
-                py,
-                None,
-                Some("localhost".to_string()),
-                None,
-                Some("pass".to_string()),
-                5432,
-                "db".to_string(),
-            );
+        let result = validate_connect_params(
+            &None,
+            &Some("localhost".to_string()),
+            &None,
+            &Some("pass".to_string()),
+        );
 
-            assert!(result.is_err());
-            if let Err(e) = result {
-                let error_msg = e.to_string();
-                assert!(error_msg.contains("user"));
-            }
-        });
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("user"));
     }
 
     #[test]
     fn rejects_missing_password_when_no_dsn() {
-        Python::attach(|py| {
-            let result = connect(
-                py,
-                None,
-                Some("localhost".to_string()),
-                Some("user".to_string()),
-                None,
-                5432,
-                "db".to_string(),
-            );
+        let result = validate_connect_params(
+            &None,
+            &Some("localhost".to_string()),
+            &Some("user".to_string()),
+            &None,
+        );
 
-            assert!(result.is_err());
-            if let Err(e) = result {
-                let error_msg = e.to_string();
-                assert!(error_msg.contains("password"));
-            }
-        });
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("password"));
     }
 
     #[test]
-    fn allows_custom_port_with_individual_params() {
-        Python::attach(|py| {
-            let result = connect(
-                py,
-                None,
-                Some("nonexistent-host-for-testing".to_string()),
-                Some("user".to_string()),
-                Some("pass".to_string()),
-                9999,
-                "db".to_string(),
-            );
+    fn accepts_valid_individual_params() {
+        let result = validate_connect_params(
+            &None,
+            &Some("localhost".to_string()),
+            &Some("user".to_string()),
+            &Some("pass".to_string()),
+        );
 
-            // This will fail connection, but should not fail validation
-            if let Err(e) = result {
-                let error_msg = e.to_string();
-                assert!(!error_msg.contains("Missing parameter"));
-            }
-        });
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn uses_custom_database_name() {
-        Python::attach(|py| {
-            let result = connect(
-                py,
-                None,
-                Some("nonexistent-host-for-testing".to_string()),
-                Some("user".to_string()),
-                Some("pass".to_string()),
-                5432,
-                "custom_database_name".to_string(),
-            );
+    fn accepts_dsn_only() {
+        let result = validate_connect_params(
+            &Some("postgresql://user:pass@localhost/db".to_string()),
+            &None,
+            &None,
+            &None,
+        );
 
-            // This will fail connection, but should not fail validation
-            if let Err(e) = result {
-                let error_msg = e.to_string();
-                assert!(!error_msg.contains("Missing parameter"));
-            }
-        });
+        assert!(result.is_ok());
     }
 }

@@ -51,3 +51,30 @@ pub(crate) fn populate_config_from_params(
         .password(&password)
         .dbname(&db)
 }
+
+pub(crate) fn validate_connect_params(
+    dsn: &Option<String>,
+    host: &Option<String>,
+    user: &Option<String>,
+    password: &Option<String>,
+) -> Result<(), OxpgError> {
+    if dsn.is_some() && (host.is_some() || user.is_some() || password.is_some()) {
+        return Err(OxpgError::InvalidParameter(
+            "Cannot specify both DSN and individual connection parameters".to_string(),
+        ));
+    }
+
+    if dsn.is_none() {
+        if host.is_none() {
+            return Err(OxpgError::MissingParameter("host".to_string()));
+        }
+        if user.is_none() {
+            return Err(OxpgError::MissingParameter("user".to_string()));
+        }
+        if password.is_none() {
+            return Err(OxpgError::MissingParameter("password".to_string()));
+        }
+    }
+
+    Ok(())
+}
