@@ -75,6 +75,7 @@ impl Client {
         Ok(result)
     }
 
+    #[pyo3(signature = (query, *args))]
     fn execute<'a>(
         &'a self,
         py: Python<'a>,

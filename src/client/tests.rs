@@ -1,4 +1,5 @@
 use super::config::*;
+use super::*;
 use pyo3::Python;
 use tokio_postgres::Config;
 
@@ -368,7 +369,7 @@ mod extract_host_from_dsn {
     }
 }
 
-mod connect {
+mod connect_validation {
     use crate::client::config::validate_connect_params;
 
     #[test]
@@ -469,5 +470,104 @@ mod connect {
         );
 
         assert!(result.is_ok());
+    }
+}
+
+mod connect_function {
+    use super::*;
+
+    #[test]
+    fn propagates_validation_errors() {
+        Python::attach(|py| {
+            let result = connect(
+                py,
+                Some("postgresql://user:pass@localhost/db".to_string()),
+                Some("localhost".to_string()),
+                None,
+                None,
+                5432,
+                "postgres".to_string(),
+            );
+
+            assert!(result.is_err());
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("Cannot specify both DSN"));
+        });
+    }
+
+    #[test]
+    fn propagates_dsn_parsing_errors() {
+        Python::attach(|py| {
+            let result = connect(
+                py,
+                Some("not-a-valid-dsn".to_string()),
+                None,
+                None,
+                None,
+                5432,
+                "postgres".to_string(),
+            );
+
+            assert!(result.is_err());
+        });
+    }
+
+    #[test]
+    fn enforces_missing_params_when_no_dsn() {
+        Python::attach(|py| {
+            let result = connect(
+                py,
+                None,
+                None,
+                Some("u".into()),
+                Some("p".into()),
+                5432,
+                "db".into(),
+            );
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("host"));
+
+            let result = connect(
+                py,
+                None,
+                Some("h".into()),
+                None,
+                Some("p".into()),
+                5432,
+                "db".into(),
+            );
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("user"));
+
+            let result = connect(
+                py,
+                None,
+                Some("h".into()),
+                Some("u".into()),
+                None,
+                5432,
+                "db".into(),
+            );
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("password"));
+        });
+    }
+
+    #[test]
+    fn handles_connection_refusal_gracefully() {
+        Python::attach(|py| {
+            let result = connect(
+                py,
+                None,
+                Some("localhost".to_string()),
+                Some("user".to_string()),
+                Some("pass".to_string()),
+                5432,
+                "db".to_string(),
+            );
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("Failed to connect"));
+        });
     }
 }
