@@ -114,15 +114,15 @@ except oxpg.DatabaseError as e:
 
 ## Development
 
+> [!NOTE]
+> Assumes you have Rust and Python 3.14+ installed, using uv
+
 ```bash
 # Start test database
 docker compose -f docker-compose.test.yaml up -d
 
 # Install dev dependencies
 uv sync
-
-> [!NOTE]
-> Assumes you have Rust and Python 3.14+ installed, using uv
 
 # Build, Sub module, and uv sync
 ./build.sh
