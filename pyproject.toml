@@ -5,14 +5,22 @@ build-backend = "maturin"
 [project]
 name = "oxpg"
 version = "0.1.0"
-description = "Add your description here"
+description = "Fast PostgreSQL client for Python, built with Rust"
 readme = "README.md"
 requires-python = ">=3.14"
+license = { text = "MIT OR Apache-2.0" }
+authors = [{ name = "Miguel Elizalde Cruz" }]
+keywords = ["postgresql", "database", "postgres", "rust"]
 dependencies = []
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Database",
+    "Topic :: Database :: Front-Ends",
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
 ]
 
 
