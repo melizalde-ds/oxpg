@@ -1,8 +1,6 @@
-use pyo3::{
-    PyErr,
-    exceptions::{PyConnectionError, PyRuntimeError, PyTypeError, PyValueError},
-};
-use std::convert::From;
+use pyo3::create_exception;
+use pyo3::exceptions::PyException;
+use pyo3::prelude::*;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -31,34 +29,45 @@ pub enum OxpgError {
     Unexpected(String),
 }
 
-impl From<OxpgError> for PyErr {
-    fn from(value: OxpgError) -> Self {
-        match value {
-            OxpgError::MissingParameter(param) => {
-                PyErr::new::<PyValueError, _>(format!("Missing required parameter: {}", param))
-            }
-            OxpgError::InvalidParameter(param) => {
-                PyErr::new::<PyValueError, _>(format!("Invalid parameter value: {}", param))
-            }
-            OxpgError::InvalidDsn(reason) => {
-                PyErr::new::<PyValueError, _>(format!("Invalid DSN: {}", reason))
-            }
-            OxpgError::ConnectionFailed(reason) => {
-                PyErr::new::<PyConnectionError, _>(format!("Connection failed: {}", reason))
-            }
-            OxpgError::RuntimeFailed(reason) => {
-                PyErr::new::<PyRuntimeError, _>(format!("Runtime failed: {}", reason))
-            }
-            OxpgError::Unexpected(msg) => {
-                PyErr::new::<PyRuntimeError, _>(format!("Unexpected error: {}", msg))
-            }
-            OxpgError::QueryFailed(reason) => {
-                PyErr::new::<PyRuntimeError, _>(format!("Query failed: {}", reason))
-            }
-            OxpgError::ExecutionError(msg) => PyErr::new::<PyRuntimeError, _>(msg),
+create_exception!(oxpg, Error, PyException);
 
-            OxpgError::UnsupportedType(msg) => PyErr::new::<PyTypeError, _>(msg),
-            OxpgError::DataConversionError(msg) => PyErr::new::<PyValueError, _>(msg),
+create_exception!(oxpg, InterfaceError, Error);
+
+create_exception!(oxpg, DatabaseError, Error);
+
+create_exception!(oxpg, DataError, DatabaseError);
+
+create_exception!(oxpg, OperationalError, DatabaseError);
+
+create_exception!(oxpg, InternalError, DatabaseError);
+
+impl From<OxpgError> for PyErr {
+    fn from(err: OxpgError) -> PyErr {
+        match err {
+            OxpgError::MissingParameter(msg) => InterfaceError::new_err(msg),
+            OxpgError::InvalidParameter(msg) => InterfaceError::new_err(msg),
+            OxpgError::InvalidDsn(msg) => InterfaceError::new_err(msg),
+
+            OxpgError::ConnectionFailed(msg) => OperationalError::new_err(msg),
+            OxpgError::RuntimeFailed(msg) => OperationalError::new_err(msg),
+
+            OxpgError::QueryFailed(msg) => DatabaseError::new_err(msg),
+            OxpgError::ExecutionError(msg) => DatabaseError::new_err(msg),
+
+            OxpgError::UnsupportedType(msg) => DataError::new_err(msg),
+            OxpgError::DataConversionError(msg) => DataError::new_err(msg),
+
+            OxpgError::Unexpected(msg) => InternalError::new_err(msg),
         }
     }
+}
+
+pub fn register_exceptions(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add("Error", m.py().get_type::<Error>())?;
+    m.add("InterfaceError", m.py().get_type::<InterfaceError>())?;
+    m.add("DatabaseError", m.py().get_type::<DatabaseError>())?;
+    m.add("DataError", m.py().get_type::<DataError>())?;
+    m.add("OperationalError", m.py().get_type::<OperationalError>())?;
+    m.add("InternalError", m.py().get_type::<InternalError>())?;
+    Ok(())
 }

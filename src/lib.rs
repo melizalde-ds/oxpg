@@ -8,6 +8,7 @@ use pyo3_stub_gen::define_stub_info_gatherer;
 fn oxpg(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(client::connect, m)?)?;
     m.add_class::<client::Client>()?;
+    errors::register_exceptions(m)?;
     Ok(())
 }
 
