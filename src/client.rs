@@ -79,48 +79,20 @@ impl Client {
                 let val: Vec<u8> = arg.extract()?;
                 params.push(Box::new(val));
             } else if arg.is_instance_of::<PyDateTime>() {
-                let year: i32 = arg.getattr("year")?.extract()?;
-                let month: u32 = arg.getattr("month")?.extract()?;
-                let day: u32 = arg.getattr("day")?.extract()?;
-                let hour: u32 = arg.getattr("hour")?.extract()?;
-                let minute: u32 = arg.getattr("minute")?.extract()?;
-                let second: u32 = arg.getattr("second")?.extract()?;
-                let microsecond: u32 = arg.getattr("microsecond")?.extract()?;
-
-                let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)
-                    .and_then(|d| d.and_hms_micro_opt(hour, minute, second, microsecond))
-                    .ok_or_else(|| {
-                        PyErr::from(OxpgError::QueryFailed("Invalid datetime".to_string()))
-                    })?;
-
+                let naive_dt = arg.extract::<chrono::NaiveDateTime>()?;
                 match expected_type {
-                    Some(&Type::TIMESTAMP) => params.push(Box::new(naive)),
+                    Some(&Type::TIMESTAMP) => params.push(Box::new(naive_dt)),
                     _ => {
-                        let dt = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
-                        params.push(Box::new(dt));
+                        let dt_utc = DateTime::<Utc>::from_naive_utc_and_offset(naive_dt, Utc);
+                        params.push(Box::new(dt_utc));
                     }
                 }
             } else if arg.is_instance_of::<PyDate>() {
-                let year: i32 = arg.getattr("year")?.extract()?;
-                let month: u32 = arg.getattr("month")?.extract()?;
-                let day: u32 = arg.getattr("day")?.extract()?;
-
-                let date = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
-                    PyErr::from(OxpgError::QueryFailed("Invalid date".to_string()))
-                })?;
-
+                let date = arg.extract::<chrono::NaiveDate>()?;
+                params.push(Box::new(date));
                 params.push(Box::new(date));
             } else if arg.is_instance_of::<PyTime>() {
-                let hour: u32 = arg.getattr("hour")?.extract()?;
-                let minute: u32 = arg.getattr("minute")?.extract()?;
-                let second: u32 = arg.getattr("second")?.extract()?;
-                let microsecond: u32 = arg.getattr("microsecond")?.extract()?;
-
-                let time = chrono::NaiveTime::from_hms_micro_opt(hour, minute, second, microsecond)
-                    .ok_or_else(|| {
-                        PyErr::from(OxpgError::QueryFailed("Invalid time".to_string()))
-                    })?;
-
+                let time = arg.extract::<chrono::NaiveTime>()?;
                 params.push(Box::new(time));
             } else if arg.is_instance_of::<PyDelta>() {
                 let days: i64 = arg.getattr("days")?.extract()?;
@@ -183,16 +155,8 @@ impl Client {
                             )))
                         })?,
                     Type::DATE => row
-                        .get::<_, Option<NaiveDate>>(idx)
-                        .map(|d| d.to_string())
-                        .into_pyobject(py)
-                        .map_err(|e| {
-                            PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert DATE column '{}': {:?}",
-                                column.name(),
-                                e
-                            )))
-                        })?,
+                        .get::<_, Option<chrono::NaiveDate>>(idx)
+                        .into_pyobject(py)?,
                     Type::INT2 => {
                         row.get::<_, Option<i16>>(idx)
                             .into_pyobject(py)
@@ -281,37 +245,13 @@ impl Client {
                         })?,
                     Type::TIME => row
                         .get::<_, Option<chrono::NaiveTime>>(idx)
-                        .map(|t| t.to_string())
-                        .into_pyobject(py)
-                        .map_err(|e| {
-                            PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert TIME column '{}': {:?}",
-                                column.name(),
-                                e
-                            )))
-                        })?,
+                        .into_pyobject(py)?,
                     Type::TIMESTAMP => row
                         .get::<_, Option<chrono::NaiveDateTime>>(idx)
-                        .map(|t| t.to_string())
-                        .into_pyobject(py)
-                        .map_err(|e| {
-                            PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert TIMESTAMP column '{}': {:?}",
-                                column.name(),
-                                e
-                            )))
-                        })?,
-                    Type::TIMESTAMPTZ => row
-                        .get::<_, Option<DateTime<Utc>>>(idx)
-                        .map(|dt| dt.to_string())
-                        .into_pyobject(py)
-                        .map_err(|e| {
-                            PyErr::from(OxpgError::QueryFailed(format!(
-                                "Failed to convert TIMESTAMPTZ column '{}': {:?}",
-                                column.name(),
-                                e
-                            )))
-                        })?,
+                        .into_pyobject(py)?,
+                    Type::TIMESTAMPTZ => {
+                        row.get::<_, Option<DateTime<Utc>>>(idx).into_pyobject(py)?
+                    }
                     Type::UUID => row
                         .get::<_, Option<uuid::Uuid>>(idx)
                         .map(|u| u.to_string())
