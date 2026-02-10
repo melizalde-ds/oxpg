@@ -37,27 +37,83 @@ impl Client {
                 self.runtime
                     .block_on(async { self.client.prepare(&query).await })
             })
-            .map_err(|e| PyErr::from(OxpgError::QueryFailed(format!("Prepare failed: {:?}", e))))?;
+            .map_err(|e| {
+                PyErr::from(OxpgError::ExecutionError(format!(
+                    "Prepare failed: {:?}",
+                    e
+                )))
+            })?;
+
         let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
         for (idx, arg) in args.iter().enumerate() {
             let expected_type = statement.params().get(idx);
 
             if arg.is_instance_of::<PyBool>() {
-                let val: bool = arg.extract()?;
+                let val: bool = arg.extract().map_err(|e| {
+                    OxpgError::InvalidParameter(format!(
+                        "Could not extract BOOL for argument {}: {}",
+                        idx, e
+                    ))
+                })?;
                 params.push(Box::new(val));
             } else if arg.is_instance_of::<PyInt>() {
                 match expected_type {
-                    Some(&Type::INT2) => params.push(Box::new(arg.extract::<i16>()?)),
-                    Some(&Type::INT4) => params.push(Box::new(arg.extract::<i32>()?)),
-                    _ => params.push(Box::new(arg.extract::<i64>()?)),
+                    Some(&Type::INT2) => {
+                        let val = arg.extract::<i16>().map_err(|e| {
+                            OxpgError::InvalidParameter(format!(
+                                "Could not fit argument {} into INT2: {}",
+                                idx, e
+                            ))
+                        })?;
+                        params.push(Box::new(val));
+                    }
+                    Some(&Type::INT4) => {
+                        let val = arg.extract::<i32>().map_err(|e| {
+                            OxpgError::InvalidParameter(format!(
+                                "Could not fit argument {} into INT4: {}",
+                                idx, e
+                            ))
+                        })?;
+                        params.push(Box::new(val));
+                    }
+                    _ => {
+                        let val = arg.extract::<i64>().map_err(|e| {
+                            OxpgError::InvalidParameter(format!(
+                                "Could not fit argument {} into INT8: {}",
+                                idx, e
+                            ))
+                        })?;
+                        params.push(Box::new(val));
+                    }
                 }
             } else if arg.is_instance_of::<PyFloat>() {
                 match expected_type {
-                    Some(&Type::FLOAT4) => params.push(Box::new(arg.extract::<f32>()?)),
-                    _ => params.push(Box::new(arg.extract::<f64>()?)),
+                    Some(&Type::FLOAT4) => {
+                        let val = arg.extract::<f32>().map_err(|e| {
+                            OxpgError::InvalidParameter(format!(
+                                "Could not extract FLOAT4 for argument {}: {}",
+                                idx, e
+                            ))
+                        })?;
+                        params.push(Box::new(val));
+                    }
+                    _ => {
+                        let val = arg.extract::<f64>().map_err(|e| {
+                            OxpgError::InvalidParameter(format!(
+                                "Could not extract FLOAT8 for argument {}: {}",
+                                idx, e
+                            ))
+                        })?;
+                        params.push(Box::new(val));
+                    }
                 }
             } else if arg.is_instance_of::<PyString>() {
-                let val: String = arg.extract()?;
+                let val: String = arg.extract().map_err(|e| {
+                    OxpgError::InvalidParameter(format!(
+                        "Could not extract String for argument {}: {}",
+                        idx, e
+                    ))
+                })?;
                 params.push(Box::new(val));
             } else if arg.is_instance_of::<PyNone>() {
                 match expected_type {
@@ -76,10 +132,20 @@ impl Client {
                     _ => params.push(Box::new(None::<String>)),
                 }
             } else if arg.is_instance_of::<PyBytes>() || arg.is_instance_of::<PyByteArray>() {
-                let val: Vec<u8> = arg.extract()?;
+                let val: Vec<u8> = arg.extract().map_err(|e| {
+                    OxpgError::InvalidParameter(format!(
+                        "Could not extract bytes for argument {}: {}",
+                        idx, e
+                    ))
+                })?;
                 params.push(Box::new(val));
             } else if arg.is_instance_of::<PyDateTime>() {
-                let naive_dt = arg.extract::<chrono::NaiveDateTime>()?;
+                let naive_dt = arg.extract::<chrono::NaiveDateTime>().map_err(|e| {
+                    OxpgError::InvalidParameter(format!(
+                        "Could not extract NaiveDateTime for argument {}: {}",
+                        idx, e
+                    ))
+                })?;
                 match expected_type {
                     Some(&Type::TIMESTAMP) => params.push(Box::new(naive_dt)),
                     _ => {
@@ -88,16 +154,40 @@ impl Client {
                     }
                 }
             } else if arg.is_instance_of::<PyDate>() {
-                let date = arg.extract::<chrono::NaiveDate>()?;
-                params.push(Box::new(date));
+                let date = arg.extract::<chrono::NaiveDate>().map_err(|e| {
+                    OxpgError::InvalidParameter(format!(
+                        "Could not extract NaiveDate for argument {}: {}",
+                        idx, e
+                    ))
+                })?;
                 params.push(Box::new(date));
             } else if arg.is_instance_of::<PyTime>() {
-                let time = arg.extract::<chrono::NaiveTime>()?;
+                let time = arg.extract::<chrono::NaiveTime>().map_err(|e| {
+                    OxpgError::InvalidParameter(format!(
+                        "Could not extract NaiveTime for argument {}: {}",
+                        idx, e
+                    ))
+                })?;
                 params.push(Box::new(time));
             } else if arg.is_instance_of::<PyDelta>() {
-                let days: i64 = arg.getattr("days")?.extract()?;
-                let seconds: i64 = arg.getattr("seconds")?.extract()?;
-                let microseconds: i64 = arg.getattr("microseconds")?.extract()?;
+                let days: i64 = arg.getattr("days")?.extract().map_err(|e| {
+                    OxpgError::InvalidParameter(format!(
+                        "Could not extract timedelta.days for argument {}: {}",
+                        idx, e
+                    ))
+                })?;
+                let seconds: i64 = arg.getattr("seconds")?.extract().map_err(|e| {
+                    OxpgError::InvalidParameter(format!(
+                        "Could not extract timedelta.seconds for argument {}: {}",
+                        idx, e
+                    ))
+                })?;
+                let microseconds: i64 = arg.getattr("microseconds")?.extract().map_err(|e| {
+                    OxpgError::InvalidParameter(format!(
+                        "Could not extract timedelta.microseconds for argument {}: {}",
+                        idx, e
+                    ))
+                })?;
 
                 let interval_str = format!(
                     "{} days {} seconds {} microseconds",
@@ -106,10 +196,13 @@ impl Client {
 
                 params.push(Box::new(interval_str));
             } else {
-                return Err(PyErr::from(OxpgError::QueryFailed(format!(
-                    "Unsupported parameter type: {}. Supported types: int, float, bool, str, bytes, bytearray, datetime, date, time, timedelta, None",
+                return Err(OxpgError::UnsupportedType(format!(
+                    "Parameter at index {} is of type '{}', which is not supported. \
+                     Supported types: int, float, bool, str, bytes, bytearray, datetime, date, time, timedelta, None",
+                    idx,
                     arg.get_type().name()?
-                ))));
+                ))
+                .into());
             }
         }
 
@@ -122,8 +215,8 @@ impl Client {
                     .block_on(async { self.client.query(&query, &referenced_params).await })
             })
             .map_err(|e| {
-                PyErr::from(OxpgError::QueryFailed(format!(
-                    "Failed to execute query: {:?}",
+                PyErr::from(OxpgError::ExecutionError(format!(
+                    "Query execution failed: {:?}",
                     e
                 )))
             })?;
@@ -137,7 +230,7 @@ impl Client {
                         row.get::<_, Option<bool>>(idx)
                             .into_pyobject(py)
                             .map_err(|e| {
-                                PyErr::from(OxpgError::QueryFailed(format!(
+                                PyErr::from(OxpgError::DataConversionError(format!(
                                     "Failed to convert BOOL column '{}': {:?}",
                                     column.name(),
                                     e
@@ -148,7 +241,7 @@ impl Client {
                         .get::<_, Option<Vec<u8>>>(idx)
                         .into_pyobject(py)
                         .map_err(|e| {
-                            PyErr::from(OxpgError::QueryFailed(format!(
+                            PyErr::from(OxpgError::DataConversionError(format!(
                                 "Failed to convert BYTEA column '{}': {:?}",
                                 column.name(),
                                 e
@@ -156,12 +249,19 @@ impl Client {
                         })?,
                     Type::DATE => row
                         .get::<_, Option<chrono::NaiveDate>>(idx)
-                        .into_pyobject(py)?,
+                        .into_pyobject(py)
+                        .map_err(|e| {
+                            PyErr::from(OxpgError::DataConversionError(format!(
+                                "Failed to convert DATE column '{}': {:?}",
+                                column.name(),
+                                e
+                            )))
+                        })?,
                     Type::INT2 => {
                         row.get::<_, Option<i16>>(idx)
                             .into_pyobject(py)
                             .map_err(|e| {
-                                PyErr::from(OxpgError::QueryFailed(format!(
+                                PyErr::from(OxpgError::DataConversionError(format!(
                                     "Failed to convert INT2 column '{}': {:?}",
                                     column.name(),
                                     e
@@ -172,7 +272,7 @@ impl Client {
                         row.get::<_, Option<i32>>(idx)
                             .into_pyobject(py)
                             .map_err(|e| {
-                                PyErr::from(OxpgError::QueryFailed(format!(
+                                PyErr::from(OxpgError::DataConversionError(format!(
                                     "Failed to convert INT4 column '{}': {:?}",
                                     column.name(),
                                     e
@@ -183,7 +283,7 @@ impl Client {
                         row.get::<_, Option<i64>>(idx)
                             .into_pyobject(py)
                             .map_err(|e| {
-                                PyErr::from(OxpgError::QueryFailed(format!(
+                                PyErr::from(OxpgError::DataConversionError(format!(
                                     "Failed to convert INT8 column '{}': {:?}",
                                     column.name(),
                                     e
@@ -195,7 +295,7 @@ impl Client {
                         .map(|v| v.to_string())
                         .into_pyobject(py)
                         .map_err(|e| {
-                            PyErr::from(OxpgError::QueryFailed(format!(
+                            PyErr::from(OxpgError::DataConversionError(format!(
                                 "Failed to convert JSON/JSONB column '{}': {:?}",
                                 column.name(),
                                 e
@@ -204,18 +304,25 @@ impl Client {
                     Type::NUMERIC => row
                         .try_get::<_, Option<String>>(idx)
                         .map_err(|e| {
-                            PyErr::from(OxpgError::QueryFailed(format!(
+                            PyErr::from(OxpgError::DataConversionError(format!(
                                 "Failed to convert NUMERIC column '{}' to string: {:?}",
                                 column.name(),
                                 e
                             )))
                         })?
-                        .into_pyobject(py)?,
+                        .into_pyobject(py)
+                        .map_err(|e| {
+                            PyErr::from(OxpgError::DataConversionError(format!(
+                                "Failed to convert NUMERIC column '{}' to PyObject: {:?}",
+                                column.name(),
+                                e
+                            )))
+                        })?,
                     Type::FLOAT4 => {
                         row.get::<_, Option<f32>>(idx)
                             .into_pyobject(py)
                             .map_err(|e| {
-                                PyErr::from(OxpgError::QueryFailed(format!(
+                                PyErr::from(OxpgError::DataConversionError(format!(
                                     "Failed to convert FLOAT4 column '{}': {:?}",
                                     column.name(),
                                     e
@@ -226,7 +333,7 @@ impl Client {
                         row.get::<_, Option<f64>>(idx)
                             .into_pyobject(py)
                             .map_err(|e| {
-                                PyErr::from(OxpgError::QueryFailed(format!(
+                                PyErr::from(OxpgError::DataConversionError(format!(
                                     "Failed to convert FLOAT8 column '{}': {:?}",
                                     column.name(),
                                     e
@@ -237,7 +344,7 @@ impl Client {
                         .get::<_, Option<String>>(idx)
                         .into_pyobject(py)
                         .map_err(|e| {
-                            PyErr::from(OxpgError::QueryFailed(format!(
+                            PyErr::from(OxpgError::DataConversionError(format!(
                                 "Failed to convert TEXT/VARCHAR column '{}': {:?}",
                                 column.name(),
                                 e
@@ -245,26 +352,47 @@ impl Client {
                         })?,
                     Type::TIME => row
                         .get::<_, Option<chrono::NaiveTime>>(idx)
-                        .into_pyobject(py)?,
+                        .into_pyobject(py)
+                        .map_err(|e| {
+                            PyErr::from(OxpgError::DataConversionError(format!(
+                                "Failed to convert TIME column '{}': {:?}",
+                                column.name(),
+                                e
+                            )))
+                        })?,
                     Type::TIMESTAMP => row
                         .get::<_, Option<chrono::NaiveDateTime>>(idx)
-                        .into_pyobject(py)?,
-                    Type::TIMESTAMPTZ => {
-                        row.get::<_, Option<DateTime<Utc>>>(idx).into_pyobject(py)?
-                    }
+                        .into_pyobject(py)
+                        .map_err(|e| {
+                            PyErr::from(OxpgError::DataConversionError(format!(
+                                "Failed to convert TIMESTAMP column '{}': {:?}",
+                                column.name(),
+                                e
+                            )))
+                        })?,
+                    Type::TIMESTAMPTZ => row
+                        .get::<_, Option<DateTime<Utc>>>(idx)
+                        .into_pyobject(py)
+                        .map_err(|e| {
+                            PyErr::from(OxpgError::DataConversionError(format!(
+                                "Failed to convert TIMESTAMPTZ column '{}': {:?}",
+                                column.name(),
+                                e
+                            )))
+                        })?,
                     Type::UUID => row
                         .get::<_, Option<uuid::Uuid>>(idx)
                         .map(|u| u.to_string())
                         .into_pyobject(py)
                         .map_err(|e| {
-                            PyErr::from(OxpgError::QueryFailed(format!(
+                            PyErr::from(OxpgError::DataConversionError(format!(
                                 "Failed to convert UUID column '{}': {:?}",
                                 column.name(),
                                 e
                             )))
                         })?,
                     _ => {
-                        return Err(PyErr::from(OxpgError::QueryFailed(format!(
+                        return Err(PyErr::from(OxpgError::UnsupportedType(format!(
                             "Unsupported Postgres type '{}' (OID {}) for column '{}'",
                             column.type_().name(),
                             column.type_().oid(),
@@ -274,7 +402,7 @@ impl Client {
                 };
 
                 row_dict.set_item(column.name(), value).map_err(|e| {
-                    PyErr::from(OxpgError::QueryFailed(format!(
+                    PyErr::from(OxpgError::DataConversionError(format!(
                         "Failed to add column '{}' to result dictionary: {:?}",
                         column.name(),
                         e
@@ -282,7 +410,7 @@ impl Client {
                 })?;
             }
             result.append(row_dict).map_err(|e| {
-                PyErr::from(OxpgError::QueryFailed(format!(
+                PyErr::from(OxpgError::DataConversionError(format!(
                     "Failed to append row to result list: {:?}",
                     e
                 )))
