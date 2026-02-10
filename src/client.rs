@@ -559,6 +559,7 @@ fn populate_config_from_params(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     mod populate_config_from_params {
         use super::*;
@@ -1085,6 +1086,96 @@ mod tests {
                     assert!(!error_msg.contains("Missing parameter"));
                 }
             });
+        }
+    }
+
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn dsn_preserves_extended_configuration() {
+            Python::attach(|_py| {
+                let dsn = "postgresql://user:pass@localhost/mydb?connect_timeout=10&keepalives=0"
+                    .to_string();
+                let mut config = Config::new();
+
+                let result = extract_host_from_dsn(dsn, &mut config);
+                assert!(result.is_ok());
+
+                assert_eq!(config.get_connect_timeout(), Some(&Duration::from_secs(10)));
+                assert!(!config.get_keepalives());
+            });
+        }
+
+        #[test]
+        fn dsn_with_unix_socket_fails_gracefully() {
+            Python::attach(|_py| {
+                let dsn = "postgresql://user:pass@%2Fvar%2Frun%2Fpostgresql/mydb".to_string();
+                let mut config = Config::new();
+
+                let result = extract_host_from_dsn(dsn, &mut config);
+
+                assert!(result.is_err());
+                if let Err(e) = result {
+                    let msg = e.to_string();
+                    assert!(msg.contains("host"));
+                }
+            });
+        }
+
+        #[test]
+        fn dsn_implicit_host_fails() {
+            Python::attach(|_py| {
+                let dsn = "postgresql://user:pass@/mydb".to_string();
+                let mut config = Config::new();
+
+                let result = extract_host_from_dsn(dsn, &mut config);
+
+                assert!(result.is_err());
+            });
+        }
+
+        #[test]
+        fn dsn_with_multiple_hosts_selects_first() {
+            Python::attach(|_py| {
+                let dsn = "postgresql://user:pass@host1.com,host2.com/mydb".to_string();
+                let mut config = Config::new();
+
+                let result = extract_host_from_dsn(dsn, &mut config);
+
+                assert!(result.is_ok());
+                if let Ok((host, _, _, _, _)) = result {
+                    assert_eq!(host, "host1.com");
+                }
+            });
+        }
+
+        #[test]
+        fn dsn_invalid_port_parsing() {
+            Python::attach(|_py| {
+                let dsn = "postgresql://user:pass@localhost:70000/mydb".to_string();
+                let mut config = Config::new();
+
+                let result = extract_host_from_dsn(dsn, &mut config);
+
+                assert!(result.is_err());
+                let msg = result.unwrap_err().to_string();
+                assert!(msg.contains("Invalid DSN"));
+            });
+        }
+
+        #[test]
+        fn config_population_trims_whitespace_if_needed() {
+            let mut config = Config::new();
+            populate_config_from_params(
+                "localhost".to_string(),
+                " user ".to_string(),
+                "pass".to_string(),
+                5432,
+                "db".to_string(),
+                &mut config,
+            );
+            assert_eq!(config.get_user(), Some(" user "));
         }
     }
 }
