@@ -96,17 +96,17 @@ class TestExecuteVsQuery:
         assert not isinstance(result, list)
         assert isinstance(result, int)
 
-    def test_query_select_execute_select_same_result(self, db_client):
-        q_result = db_client.query("SELECT 1 AS x")
+    async def test_query_select_execute_select_same_result(self, db_client):
+        q_result = await db_client.query("SELECT 1 AS x")
         assert isinstance(q_result, list)
 
         e_result = db_client.execute("SELECT 1 AS x")
         assert isinstance(e_result, int)
         assert e_result >= 0
 
-    def test_insert_returning_use_query_not_execute(self, db_client):
+    async def test_insert_returning_use_query_not_execute(self, db_client):
         rand = str(uuid.uuid4())
-        rows = db_client.query(
+        rows = await db_client.query(
             """
             INSERT INTO users (username, email, created_at)
             VALUES ($1, $2, $3)
@@ -132,7 +132,7 @@ class TestExecuteParameterBinding:
         )
         assert rows == 1
 
-    def test_execute_unicode_parameter(self, db_client):
+    async def test_execute_unicode_parameter(self, db_client):
         rand = str(uuid.uuid4())
         emoji_name = f"🦊_{rand}"
         db_client.execute(
@@ -144,7 +144,7 @@ class TestExecuteParameterBinding:
             f"{rand}@fox.com",
             datetime.now(),
         )
-        result = db_client.query(
+        result = await db_client.query(
             "SELECT username FROM users WHERE username = $1", emoji_name
         )
         assert result[0]["username"] == emoji_name
@@ -228,7 +228,7 @@ class TestExecuteErrors:
 
 class TestExecuteIdempotency:
 
-    def test_execute_multiple_times_same_client(self, db_client):
+    async def test_execute_multiple_times_same_client(self, db_client):
         rand = str(uuid.uuid4())[:6]
         for i in range(5):
             db_client.execute(
@@ -241,7 +241,7 @@ class TestExecuteIdempotency:
                 datetime.now(),
             )
 
-        count = db_client.query(
+        count = await db_client.query(
             "SELECT COUNT(*) AS n FROM users WHERE username LIKE $1",
             f"repeat_{rand}_%",
         )
@@ -250,8 +250,8 @@ class TestExecuteIdempotency:
         db_client.execute(
             "DELETE FROM users WHERE username LIKE $1", f"repeat_{rand}_%")
 
-    def test_execute_after_query_works(self, db_client, test_data):
-        _ = db_client.query(
+    async def test_execute_after_query_works(self, db_client, test_data):
+        _ = await db_client.query(
             "SELECT id FROM users WHERE id = $1", test_data["user"]["id"]
         )
         rows = db_client.execute(
@@ -261,14 +261,14 @@ class TestExecuteIdempotency:
         )
         assert isinstance(rows, int)
 
-    def test_query_after_execute_works(self, db_client, test_data):
+    async def test_query_after_execute_works(self, db_client, test_data):
         new_title = f"Updated Title {uuid.uuid4()}"
         db_client.execute(
             "UPDATE posts SET title = $1 WHERE id = $2",
             new_title,
             test_data["post"]["id"],
         )
-        result = db_client.query(
+        result = await db_client.query(
             "SELECT title FROM posts WHERE id = $1", test_data["post"]["id"]
         )
         assert result[0]["title"] == new_title
