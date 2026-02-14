@@ -8,10 +8,10 @@ name = "oxpg"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-pyo3 = { version = "0.26", features = ["uuid", "chrono"] }
+pyo3 = { version = "0.28", features = ["uuid", "chrono"] }
 thiserror = "2.0.18"
 anyhow = "1.0.101"
-pyo3-async-runtimes = { version = "0.26.0", features = ["tokio-runtime"] }
+pyo3-async-runtimes = { version = "0.28.0", features = ["tokio-runtime"] }
 tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros"] }
 tokio-postgres = { version = "0.7.16", features = [
     "with-chrono-0_4",
@@ -25,4 +25,9 @@ serde_json = "1.0.149"
 uuid = { version = "1.20", features = ["serde"] }
 
 [dev-dependencies]
-pyo3 = { version = "0.26", features = ["auto-initialize"] }
+pyo3 = { version = "0.28", features = ["auto-initialize"] }
+
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]

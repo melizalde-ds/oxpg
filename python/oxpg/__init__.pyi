@@ -10,14 +10,15 @@ __all__ = [
     "Error",
     "InterfaceError",
     "InternalError",
+    "MissingDependency",
     "OperationalError",
     "connect",
 ]
 
 @typing.final
 class Client:
-    def query(self, query: builtins.str, *args: typing.Any) -> list: ...
-    def execute(self, query: builtins.str, *args: typing.Any) -> builtins.int: ...
+    def query(self, query: builtins.str, *args: typing.Any) -> typing.Any: ...
+    def execute(self, query: builtins.str, *args: typing.Any) -> typing.Any: ...
     def __repr__(self) -> builtins.str: ...
 
 class DataError(DatabaseError):
@@ -33,6 +34,9 @@ class InterfaceError(Error):
     ...
 
 class InternalError(DatabaseError):
+    ...
+
+class MissingDependency(InternalError):
     ...
 
 class OperationalError(DatabaseError):

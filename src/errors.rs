@@ -9,6 +9,7 @@ create_exception!(oxpg, DatabaseError, Error);
 create_exception!(oxpg, DataError, DatabaseError);
 create_exception!(oxpg, OperationalError, DatabaseError);
 create_exception!(oxpg, InternalError, DatabaseError);
+create_exception!(oxpg, MissingDependency, InternalError);
 
 #[derive(Error, Debug)]
 pub enum OxpgError {
@@ -32,6 +33,8 @@ pub enum OxpgError {
     DataConversionError(String),
     #[error("Unexpected error: {0}")]
     Unexpected(String),
+    #[error("Missing dependency: {0}")]
+    MissingDependency(String),
 }
 
 impl From<OxpgError> for PyErr {
@@ -55,6 +58,7 @@ impl From<OxpgError> for PyErr {
             }
 
             OxpgError::Unexpected(_) => PyErr::new::<InternalError, _>(msg),
+            OxpgError::MissingDependency(_) => PyErr::new::<InternalError, _>(msg),
         }
     }
 }
@@ -66,5 +70,6 @@ pub fn register_exceptions(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("DataError", m.py().get_type::<DataError>())?;
     m.add("OperationalError", m.py().get_type::<OperationalError>())?;
     m.add("InternalError", m.py().get_type::<InternalError>())?;
+    m.add("MissingDependency", m.py().get_type::<MissingDependency>())?;
     Ok(())
 }
