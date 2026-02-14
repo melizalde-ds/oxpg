@@ -6,11 +6,9 @@ mod tests;
 
 use std::sync::Arc;
 
-use crate::client;
 use crate::client::config::validate_connect_params;
 use crate::client::conversions::{extract_params, refine_params};
 use crate::errors::OxpgError;
-use pyo3::ffi::PyObject;
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyTuple};
 use pyo3_async_runtimes::tokio::future_into_py;
@@ -62,7 +60,7 @@ impl Client {
                 )))
             })?;
 
-            Python::attach(|py| {
+            Python::attach(|py| -> PyResult<Py<PyAny>> {
                 let result = PyList::empty(py);
                 for row in rows {
                     let py_row = conversions::row_to_dict(py, &row)?;
@@ -84,34 +82,31 @@ impl Client {
         py: Python<'a>,
         query: String,
         args: &Bound<'a, PyTuple>,
-    ) -> PyResult<u64> {
-        let statement = py
-            .detach(|| {
-                self.runtime
-                    .block_on(async { self.client.prepare(&query).await })
-            })
-            .map_err(|e| {
+    ) -> PyResult<Bound<'a, PyAny>> {
+        let client = self.client.clone();
+        let mut owned_params = extract_params(args)?;
+        let query = query.clone();
+        future_into_py(py, async move {
+            let statement = client.prepare(&query).await.map_err(|e| {
                 PyErr::from(OxpgError::ExecutionError(format!(
-                    "Prepare failed: {:?}",
+                    "Error while generating statement: {:?}",
                     e
                 )))
             })?;
-        let params = conversions::prepare_params(&statement, args)?;
-        let referenced_params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            params.iter().map(|p| p.as_ref()).collect();
 
-        let rows_affected = py
-            .detach(|| {
-                self.runtime
-                    .block_on(async { self.client.execute(&statement, &referenced_params).await })
-            })
-            .map_err(|e| {
+            refine_params(&mut owned_params, &statement);
+            let ref_params: Vec<&(dyn ToSql + Sync)> =
+                owned_params.iter().map(|p| p.as_ref()).collect();
+
+            let result = client.execute(&statement, &ref_params).await.map_err(|e| {
                 PyErr::from(OxpgError::ExecutionError(format!(
-                    "Execute failed: {:?}",
+                    "Error while executing query: {:?}",
                     e
                 )))
             })?;
-        Ok(rows_affected)
+
+            Ok(result)
+        })
     }
 
     fn __repr__(&self) -> String {
