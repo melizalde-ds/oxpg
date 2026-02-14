@@ -26,3 +26,8 @@ uuid = { version = "1.20", features = ["serde"] }
 
 [dev-dependencies]
 pyo3 = { version = "0.28", features = ["auto-initialize"] }
+
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
